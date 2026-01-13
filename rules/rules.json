@@ -1,1 +1,63 @@
-[]
+[
+  {
+    "id": "64fa19ed646b45a1aa1e1ff9fe085132",
+    "type": "correlation",
+    "name": "Kerberoasting Detection - TGS Requests with RC4 Encryption",
+    "description": "MITRE ATT&CK: T1558.003 - Steal or Forge Kerberos Tickets: Kerberoasting\n\n#event_simpleName = \"UserLogon\" OR #event_simpleName = \"KerberosTicketGrantingService\"\n| EventType = \"4769\"\n| TicketEncryptionType = \"0x17\"  // RC4-HMAC (weak encryption, commonly abused)\n| ServiceName != \"krbtgt\"\n| ServiceName != /\\$$/  // Exclude machine accounts\n| groupBy([SourceIP, TargetUserName], function=count(), span=5m)\n| _count > 10\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"TargetAccount\")",
+    "customer_id": "3695fb05991b4d7789a13a9761d16829",
+    "tactic": "TA0006",
+    "technique": "T1558",
+    "mitre_attack": [
+      {
+        "tactic_id": "TA0006",
+        "technique_id": "T1558"
+      }
+    ],
+    "severity": 50,
+    "search": {
+      "outcome": "detection",
+      "filter": "| EventType = \"4769\"\n| TicketEncryptionType = \"0x17\"  // RC4-HMAC (weak encryption, commonly abused)\n| ServiceName != \"krbtgt\"\n| ServiceName != /\\$$/  // Exclude machine accounts\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 10\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"TargetAccount\")",
+      "lookback": "2h0m",
+      "trigger_mode": "verbose",
+      "execution_mode": "scheduled"
+    },
+    "operation": {
+      "schedule": {
+        "definition": "@every 0h5m"
+      },
+      "start_on": "2026-01-13T23:00:00Z"
+    },
+    "api_client_id": "",
+    "user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
+    "user_id": "balmond@presidio.com",
+    "updated_by_api_client_id": "",
+    "updated_by_user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
+    "updated_by_user_id": "balmond@presidio.com",
+    "last_updated_on": "2026-01-13T22:34:53.772731193Z",
+    "created_on": "2026-01-13T22:34:53.772731193Z",
+    "status": "active",
+    "status_msg": "",
+    "template_id": "",
+    "rule_id": "64fa19ed646b45a1aa1e1ff9fe085132",
+    "executor_rule_id": "64fa19ed646b45a1aa1e1ff9fe085132",
+    "notifications": [
+      {
+        "type": "email",
+        "config": {
+          "recipients": [
+            "balmond@presidio.com"
+          ],
+          "plugin_id": "",
+          "config_id": "",
+          "cid": "3695fb05991b4d7789a13a9761d16829",
+          "severity": ""
+        },
+        "options": {
+          "attach_report": "false",
+          "send_on_failure": "always",
+          "send_on_success": "never"
+        }
+      }
+    ]
+  }
+]
