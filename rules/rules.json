@@ -19,7 +19,8 @@
       "filter": "| EventType = \"4768\"\n| TicketEncryptionType = \"0x17\"  // RC4-HMAC (weak encryption, commonly abused)\n| ServiceName != \"krbtgt\"\n| ServiceName != /\\$$/  // Exclude machine accounts\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 10\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"TargetAccount\")",
       "lookback": "2h0m",
       "trigger_mode": "verbose",
-      "execution_mode": "scheduled"
+      "execution_mode": "scheduled",
+      "use_ingest_time": false
     },
     "operation": {
       "schedule": {
@@ -33,7 +34,7 @@
     "updated_by_api_client_id": "",
     "updated_by_user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
     "updated_by_user_id": "balmond@presidio.com",
-    "last_updated_on": "2026-01-13T22:34:53.772731193Z",
+    "last_updated_on": "2026-01-21T18:54:57.110002834Z",
     "created_on": "2026-01-13T22:34:53.772731193Z",
     "status": "active",
     "status_msg": "",
