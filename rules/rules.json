@@ -60,5 +60,67 @@
         }
       }
     ]
+  },
+  {
+    "id": "",
+    "type": "correlation",
+    "name": "AS-REP Roasting Detection - TGT Requests Without Pre-Authentication",
+    "description": "MITRE ATT&CK: T1558.004 - Steal or Forge Kerberos Tickets: AS-REP Roasting\n\n#event_simpleName = \"UserLogon\" OR #event_simpleName = \"KerberosAuthenticationService\"\n| EventType = \"4768\"\n| PreAuthType = \"0x0\"  // No pre-authentication (vulnerable accounts)\n| Status = \"0x0\"  // Success\n| TargetUserName != /\\$$/  // Exclude machine accounts\n| TargetUserName != \"krbtgt\"\n| groupBy([SourceIP, TargetUserName], function=count(), span=5m)\n| _count > 5\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"VulnerableAccount\")",
+    "customer_id": "3695fb05991b4d7789a13a9761d16829",
+    "tactic": "TA0006",
+    "technique": "T1558",
+    "mitre_attack": [
+      {
+        "tactic_id": "TA0006",
+        "technique_id": "T1558"
+      }
+    ],
+    "severity": 60,
+    "search": {
+      "outcome": "detection",
+      "filter": "| EventType = \"4768\"\n| PreAuthType = \"0x0\"  // No pre-authentication (vulnerable accounts)\n| Status = \"0x0\"  // Success\n| TargetUserName != /\\$$/  // Exclude machine accounts\n| TargetUserName != \"krbtgt\"\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 5\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"VulnerableAccount\")",
+      "lookback": "2h0m",
+      "trigger_mode": "verbose",
+      "execution_mode": "scheduled",
+      "use_ingest_time": false
+    },
+    "operation": {
+      "schedule": {
+        "definition": "@every 0h5m"
+      },
+      "start_on": "2026-02-09T15:00:00Z"
+    },
+    "api_client_id": "",
+    "user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
+    "user_id": "balmond@presidio.com",
+    "updated_by_api_client_id": "",
+    "updated_by_user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
+    "updated_by_user_id": "balmond@presidio.com",
+    "last_updated_on": "2026-02-09T15:00:00.000000000Z",
+    "created_on": "2026-02-09T15:00:00.000000000Z",
+    "status": "active",
+    "status_msg": "",
+    "template_id": "",
+    "rule_id": "a7f8c2d9e4b3456789abcdef12345678",
+    "executor_rule_id": "a7f8c2d9e4b3456789abcdef12345678",
+    "notifications": [
+      {
+        "type": "email",
+        "config": {
+          "recipients": [
+            "balmond@presidio.com"
+          ],
+          "plugin_id": "",
+          "config_id": "",
+          "cid": "3695fb05991b4d7789a13a9761d16829",
+          "severity": ""
+        },
+        "options": {
+          "attach_report": "false",
+          "send_on_failure": "always",
+          "send_on_success": "never"
+        }
+      }
+    ]
   }
 ]
