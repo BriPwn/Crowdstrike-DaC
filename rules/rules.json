@@ -34,13 +34,75 @@
     "updated_by_api_client_id": "",
     "updated_by_user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
     "updated_by_user_id": "balmond@presidio.com",
-    "last_updated_on": "2026-02-09T14:27:37.263223743Z",
+    "last_updated_on": "2026-02-09T15:35:36.345961865Z",
     "created_on": "2026-01-13T22:34:53.772731193Z",
     "status": "active",
     "status_msg": "",
     "template_id": "",
     "rule_id": "64fa19ed646b45a1aa1e1ff9fe085132",
     "executor_rule_id": "64fa19ed646b45a1aa1e1ff9fe085132",
+    "notifications": [
+      {
+        "type": "email",
+        "config": {
+          "recipients": [
+            "balmond@presidio.com"
+          ],
+          "plugin_id": "",
+          "config_id": "",
+          "cid": "3695fb05991b4d7789a13a9761d16829",
+          "severity": ""
+        },
+        "options": {
+          "attach_report": "false",
+          "send_on_failure": "always",
+          "send_on_success": "never"
+        }
+      }
+    ]
+  },
+  {
+    "id": "b3ed3dcfafce49868f5bd3a3bc64da51",
+    "type": "correlation",
+    "name": "AS REP Roasting ",
+    "description": "AS Rep Roasting detects the exploitation of accounts that lack Kerberos pre-authentication.",
+    "customer_id": "3695fb05991b4d7789a13a9761d16829",
+    "tactic": "TA0006",
+    "technique": "T1558.004",
+    "mitre_attack": [
+      {
+        "tactic_id": "TA0006",
+        "technique_id": "T1558.004"
+      }
+    ],
+    "severity": 50,
+    "search": {
+      "outcome": "detection",
+      "filter": "#event_simpleName = \"UserLogon\" OR #event_simpleName = \"KerberosAuthenticationService\"\n| EventType = \"4768\"\n| PreAuthType = \"0x0\"\n| Status = \"0x0\"\n| TargetUserName != /\\$$/\n| TargetUserName != \"krbtgt\"\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 5\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"VulnerableAccount\")",
+      "lookback": "2h0m",
+      "trigger_mode": "verbose",
+      "execution_mode": "scheduled",
+      "use_ingest_time": true
+    },
+    "operation": {
+      "schedule": {
+        "definition": "@every 0h5m"
+      },
+      "start_on": "2026-02-09T16:00:00Z"
+    },
+    "api_client_id": "",
+    "user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
+    "user_id": "balmond@presidio.com",
+    "updated_by_api_client_id": "",
+    "updated_by_user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
+    "updated_by_user_id": "balmond@presidio.com",
+    "last_updated_on": "2026-02-09T15:37:37.176641812Z",
+    "created_on": "2026-02-09T15:37:37.176641812Z",
+    "status": "active",
+    "status_msg": "",
+    "template_id": "",
+    "rule_id": "b3ed3dcfafce49868f5bd3a3bc64da51",
+    "executor_rule_id": "b3ed3dcfafce49868f5bd3a3bc64da51",
     "notifications": [
       {
         "type": "email",
