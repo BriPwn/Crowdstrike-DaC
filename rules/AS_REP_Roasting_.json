@@ -1,5 +1,5 @@
 {
-  "id": "b3ed3dcfafce49868f5bd3a3bc64da51",
+  "id": "019d0b65a5477b9a8003a62e5e55055f",
   "type": "correlation",
   "name": "AS REP Roasting ",
   "description": "AS Rep Roasting detects the exploitation of accounts that lack Kerberos pre-authentication.",
@@ -30,29 +30,18 @@
   "api_client_id": "",
   "user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
   "user_id": "balmond@presidio.com",
-  "updated_by_api_client_id": "",
-  "updated_by_user_uuid": "bb3a6930-1b95-47ef-bae5-80d3ee21e48e",
-  "updated_by_user_id": "balmond@presidio.com",
-  "last_updated_on": "2026-02-09T15:37:37.176642Z",
-  "created_on": "2026-02-09T15:37:37.176642Z",
-  "status": "active",
+  "updated_by_api_client_id": "76d10e9a40aa4568bf044f58a3b25499",
+  "updated_by_user_uuid": "",
+  "updated_by_user_id": "api_client",
+  "last_updated_on": "2026-03-20T13:18:24.071453Z",
+  "created_on": "2026-03-20T13:18:24.071453Z",
+  "status": "updating",
   "status_msg": "",
   "template_id": "",
   "rule_id": "b3ed3dcfafce49868f5bd3a3bc64da51",
   "executor_rule_id": "b3ed3dcfafce49868f5bd3a3bc64da51",
   "state": "published",
-  "version": 1,
-  "next_execution_on": "2026-03-20T13:20:00Z",
-  "last_execution": {
-    "status_display": "Running...",
-    "result_metadata": {
-      "execution_start": "2026-03-20T13:15:58Z",
-      "search_window_end": "2026-03-20T13:15:00Z",
-      "result_count": 0,
-      "execution_duration": 0,
-      "use_ingest_time": false
-    }
-  },
+  "version": 2,
   "notifications": [
     {
       "type": "email",
