@@ -44,14 +44,14 @@
     "state": "published",
     "version": 3,
     "comment": "rule updated using rules endpoint",
-    "next_execution_on": "2026-03-20T12:10:00Z",
+    "next_execution_on": "2026-03-20T12:15:00Z",
     "last_execution": {
       "result_metadata": {
-        "execution_start": "2026-03-20T12:05:33.942503733Z",
-        "execution_finish": "2026-03-20T12:05:34.360413503Z",
-        "search_window_end": "2026-03-20T12:05:00Z",
+        "execution_start": "2026-03-20T12:10:06.948969775Z",
+        "execution_finish": "2026-03-20T12:10:08.409834612Z",
+        "search_window_end": "2026-03-20T12:10:00Z",
         "result_count": 0,
-        "execution_duration": 417,
+        "execution_duration": 1460,
         "use_ingest_time": false
       }
     },
@@ -119,14 +119,14 @@
     "executor_rule_id": "b3ed3dcfafce49868f5bd3a3bc64da51",
     "state": "published",
     "version": 1,
-    "next_execution_on": "2026-03-20T12:10:00Z",
+    "next_execution_on": "2026-03-20T12:15:00Z",
     "last_execution": {
       "result_metadata": {
-        "execution_start": "2026-03-20T12:05:52.887314247Z",
-        "execution_finish": "2026-03-20T12:05:53.25004018Z",
-        "search_window_end": "2026-03-20T12:05:00Z",
+        "execution_start": "2026-03-20T12:11:45.16436864Z",
+        "execution_finish": "2026-03-20T12:11:45.849887312Z",
+        "search_window_end": "2026-03-20T12:10:00Z",
         "result_count": 0,
-        "execution_duration": 362,
+        "execution_duration": 685,
         "use_ingest_time": true
       }
     },
@@ -460,14 +460,14 @@
     "state": "published",
     "version": 1,
     "comment": "This is added for testing purpose",
-    "next_execution_on": "2026-03-20T12:10:00Z",
+    "next_execution_on": "2026-03-20T12:15:00Z",
     "last_execution": {
       "result_metadata": {
-        "execution_start": "2026-03-20T12:07:06.380023117Z",
-        "execution_finish": "2026-03-20T12:07:08.197281394Z",
-        "search_window_end": "2026-03-20T12:05:00Z",
+        "execution_start": "2026-03-20T12:11:37.129058929Z",
+        "execution_finish": "2026-03-20T12:11:37.52376893Z",
+        "search_window_end": "2026-03-20T12:10:00Z",
         "result_count": 0,
-        "execution_duration": 1817,
+        "execution_duration": 394,
         "use_ingest_time": false
       }
     }
