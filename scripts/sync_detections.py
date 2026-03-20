@@ -1,11 +1,11 @@
 r"""Sample to manage correlation rules as part of a detection as code pipeline.
 
-    ██████╗ ██████╗ ███████╗███████╗██╗██████╗ ██╗ ██████╗
-    ██╔══██╗██╔══██╗██╔════╝██╔════╝██║██╔══██╗██║██╔═══██╗
-    ██████╔╝██████╔╝█████╗  ███████╗██║██║  ██║██║██║   ██║
-    ██╔═══╝ ██╔══██╗██╔══╝  ╚════██║██║██║  ██║██║██║   ██║
-    ██║     ██║  ██║███████╗███████║██║██████╔╝██║╚██████╔╝
-    ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝╚═════╝ ╚═╝ ╚═════╝
+██████╗ ██████╗ ███████╗███████╗██╗██████╗ ██╗ ██████╗
+██╔══██╗██╔══██╗██╔════╝██╔════╝██║██╔══██╗██║██╔═══██╗
+██████╔╝██████╔╝█████╗  ███████╗██║██║  ██║██║██║   ██║
+██╔═══╝ ██╔══██╗██╔══╝  ╚════██║██║██║  ██║██║██║   ██║
+██║     ██║  ██║███████╗███████║██║██████╔╝██║╚██████╔╝
+╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝╚═════╝ ╚═╝ ╚═════╝
 
          ▄█▄    ████▄ █▄▄▄▄ █▄▄▄▄ ▄███▄   █    ██     ▄▄▄▄▀ ▄█ ████▄    ▄
          █▀ ▀▄  █   █ █  ▄▀ █  ▄▀ █▀   ▀  █    █ █ ▀▀▀ █    ██ █   █     █
@@ -155,17 +155,55 @@ class CorrelationRulesClient:
         name = rule.get("name", rule.get("id", "unnamed"))
         return os.path.join(self.rules_dir, f"{self.sanitize_rule_name(name)}.json")
 
-    def write_rule_file(self, rule: Dict):
-        """Write a single rule to its own JSON file.
+    # ID fields assigned once on creation — never overwritten by API responses.
+    _STABLE_ID_FIELDS = ("id", "rule_id", "executor_rule_id")
 
-        Used after a successful create or update so the file reflects the
-        authoritative API state (including any fields the API assigns, e.g. id).
+    def _preserve_ids(self, incoming: Dict, file_path: str) -> Dict:
+        """Return a copy of incoming with stable ID fields pinned from the
+        existing local file.
+
+        If no local file exists yet (first create), incoming is returned
+        unchanged so the API-assigned IDs are captured on first write.
+        On every subsequent write those IDs are locked in.
+        """
+        if not os.path.exists(file_path):
+            return incoming
+
+        try:
+            with open(file_path, 'r', encoding="utf-8") as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            self.logger.warning(
+                "Could not read existing file for ID preservation (%s): %s",
+                os.path.basename(file_path), str(e)
+            )
+            return incoming
+
+        result = incoming.copy()
+        for field in self._STABLE_ID_FIELDS:
+            existing_val = existing.get(field)
+            if existing_val:
+                if result.get(field) != existing_val:
+                    self.logger.debug(
+                        "Pinning %s=%s (API returned %s)",
+                        field, existing_val, result.get(field)
+                    )
+                result[field] = existing_val
+        return result
+
+    def write_rule_file(self, rule: Dict):
+        """Write a single rule to its own JSON file, preserving stable IDs.
+
+        On first write the API-assigned IDs are captured. On all subsequent
+        writes those IDs are pinned from the local file so API response drift
+        cannot overwrite them.
         """
         try:
             os.makedirs(self.rules_dir, exist_ok=True)
             file_path = self.rule_file_path(rule)
+            rule_to_write = self._preserve_ids(rule, file_path)
             with open(file_path, 'w', encoding="utf-8") as f:
-                json.dump(rule, f, indent=2)
+                json.dump(rule_to_write, f, indent=2)
             self.logger.info("Wrote rule file: %s", os.path.basename(file_path))
         except Exception as e:
             self.logger.error("Error writing rule file for '%s': %s", rule.get('name'), str(e))
@@ -434,8 +472,10 @@ class CorrelationRulesClient:
                 file_path = self.rule_file_path(rule)
                 filename = os.path.basename(file_path)
                 expected_files.add(filename)
+                # Pin stable IDs from any existing local file before writing
+                rule_to_write = self._preserve_ids(rule, file_path)
                 with open(file_path, 'w', encoding="utf-8") as f:
-                    json.dump(rule, f, indent=2)
+                    json.dump(rule_to_write, f, indent=2)
                 self.logger.debug("Wrote rule to %s", filename)
 
             # Remove stale rule files that are no longer in the current ruleset

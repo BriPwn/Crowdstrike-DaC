@@ -1,5 +1,5 @@
 {
-  "id": "019d0c83d7c57bd0b7f69cc1f0fe50c8",
+  "id": "019d0c6c6a837b19bc524188c93b9db2",
   "type": "correlation",
   "name": "Kerberoasting Active Directory Detection",
   "description": "Kerberoasting detects adversaries requesting TGS tickets for service accounts using weak RC4 encryption (0x17), enabling offline password cracking. Focuses on non-machine accounts with anomalous volume thresholds to reduce false positives.",
