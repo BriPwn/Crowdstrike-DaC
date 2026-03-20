@@ -54,7 +54,7 @@ class CorrelationRulesClient:
         self.setup_logger()
         self.logger = logging.getLogger(__name__)
         self.falcon = self.initialize_falcon_client()
-        self.rules_file = "rules/rules.json"
+        self.rules_dir = "rules"
 
     def setup_logger(self):
         """Set up logging configuration using LOG_LEVEL environment variable.
@@ -129,34 +129,62 @@ class CorrelationRulesClient:
         self.logger.info("Successfully fetched total of %s rules", len(rules))
         return rules
 
-    def load_local_rules(self) -> List[Dict]:
-        """Load rules from local rules.json file.
+    def sanitize_rule_name(self, name: str) -> str:
+        """Convert a rule name into a safe filename (no spaces or special chars).
 
-        Returns empty list if file doesn't exist or is empty.
+        Example: 'My Rule - Test #2' -> 'My_Rule_-_Test__2'
+        """
+        safe = ""
+        for ch in name:
+            safe += ch if ch.isalnum() or ch in ("-", "_", ".") else "_"
+        return safe
+
+    def rule_file_path(self, rule: Dict) -> str:
+        """Return the expected file path for a given rule, keyed by its name."""
+        name = rule.get("name", rule.get("id", "unnamed"))
+        return os.path.join(self.rules_dir, f"{self.sanitize_rule_name(name)}.json")
+
+    def load_local_rules(self) -> List[Dict]:
+        """Load rules from individual per-rule JSON files in the rules directory.
+
+        Returns empty list if directory doesn't exist or contains no rule files.
         """
         try:
-            if not os.path.exists(self.rules_file):
-                self.logger.info("%s does not exist, creating empty file", self.rules_file)
-                os.makedirs(os.path.dirname(self.rules_file), exist_ok=True)
-                with open(self.rules_file, 'w', encoding="utf-8") as f:
-                    json.dump([], f)
+            if not os.path.exists(self.rules_dir):
+                self.logger.info("%s does not exist, creating directory", self.rules_dir)
+                os.makedirs(self.rules_dir, exist_ok=True)
                 return []
 
-            with open(self.rules_file, 'r', encoding="utf-8") as f:
-                local_rules = json.load(f)
+            rule_files = sorted(
+                f for f in os.listdir(self.rules_dir)
+                if f.endswith(".json")
+            )
 
-            if not local_rules:
-                self.logger.info("%s is empty", self.rules_file)
+            if not rule_files:
+                self.logger.info("No rule files found in %s", self.rules_dir)
                 return []
 
-            self.logger.info("Loaded %s rules from %s", len(local_rules), self.rules_file)
+            local_rules = []
+            for filename in rule_files:
+                file_path = os.path.join(self.rules_dir, filename)
+                try:
+                    with open(file_path, 'r', encoding="utf-8") as f:
+                        rule = json.load(f)
+                    if rule:
+                        local_rules.append(rule)
+                        self.logger.debug("Loaded rule from %s", filename)
+                    else:
+                        self.logger.warning("Empty rule file: %s", filename)
+                except json.JSONDecodeError as e:
+                    self.logger.error("Error decoding %s: %s", filename, str(e))
+                except Exception as e:
+                    self.logger.error("Error loading %s: %s", filename, str(e))
+
+            self.logger.info("Loaded %s rules from %s", len(local_rules), self.rules_dir)
             return local_rules
 
-        except json.JSONDecodeError as e:
-            self.logger.error("Error decoding %s: %s", self.rules_file, str(e))
-            return []
         except Exception as e:
-            self.logger.error("Error loading %s: %s", self.rules_file, str(e))
+            self.logger.error("Error loading rules from %s: %s", self.rules_dir, str(e))
             return []
 
     def is_rule_different(self, local_rule: Dict, api_rule: Dict) -> bool:
@@ -273,7 +301,7 @@ class CorrelationRulesClient:
 
             # If local rules is empty, populate with API rules
             if not local_rules:
-                self.logger.info("rules.json is empty, populating with current API rules")
+                self.logger.info("No local rule files found, populating from current API rules")
                 self.update_rules_file(api_rules)
                 return True
 
@@ -345,15 +373,38 @@ class CorrelationRulesClient:
             return False
 
     def update_rules_file(self, rules):
-        """Update the rules file."""
+        """Write each rule to its own JSON file inside the rules directory.
+
+        Files are named after the sanitized rule name (e.g. My_Rule.json).
+        Any existing JSON files in the directory that no longer correspond to
+        a current rule are removed so the directory stays in sync.
+        """
         try:
-            os.makedirs(os.path.dirname(self.rules_file), exist_ok=True)
-            with open(self.rules_file, 'w', encoding="utf-8") as f:
-                json.dump(rules, f, indent=2)
-            self.logger.info("Successfully updated %s with %s rules", self.rules_file, len(rules))
+            os.makedirs(self.rules_dir, exist_ok=True)
+
+            # Build the set of filenames we expect to write
+            expected_files = set()
+            for rule in rules:
+                file_path = self.rule_file_path(rule)
+                filename = os.path.basename(file_path)
+                expected_files.add(filename)
+                with open(file_path, 'w', encoding="utf-8") as f:
+                    json.dump(rule, f, indent=2)
+                self.logger.debug("Wrote rule to %s", filename)
+
+            # Remove stale rule files that are no longer in the current ruleset
+            for existing_file in os.listdir(self.rules_dir):
+                if existing_file.endswith(".json") and existing_file not in expected_files:
+                    stale_path = os.path.join(self.rules_dir, existing_file)
+                    os.remove(stale_path)
+                    self.logger.info("Removed stale rule file: %s", existing_file)
+
+            self.logger.info(
+                "Successfully wrote %s rule file(s) to %s", len(rules), self.rules_dir
+            )
 
         except Exception as e:
-            self.logger.error("Error updating rules file: %s", str(e))
+            self.logger.error("Error updating rules directory: %s", str(e))
             raise
 
     def update_rule_in_api(self, rule: Dict) -> bool:  # noqa: C901
