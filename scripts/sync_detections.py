@@ -268,76 +268,100 @@ class CorrelationRulesClient:
             self.logger.debug("Error accessing nested field %s: %s", field_path, str(e))
             return None
 
-    def delete_rule_from_api(self, rule_id: str) -> bool:
+    def delete_rule_from_api(self, rule: Dict) -> bool:
         """Delete a rule from the API.
+
+        Performs a live lookup by name immediately before the delete call so
+        the request always carries the ID the API currently recognises, even
+        if the ID changed since the last sync run.
 
         Returns True if successful.
         """
         try:
-            response = self.falcon.delete_rules(ids=rule_id)
-
-            if response["status_code"] == 200:
-                self.logger.info("Successfully deleted rule %s", rule_id)
+            name = rule.get("name", "")
+            live = self._fetch_live_rule_by_name(name)
+            if live:
+                current_id = live["id"]
+                if current_id != rule.get("id"):
+                    self.logger.info(
+                        "Refreshed ID for delete '%s': %s -> %s",
+                        name, rule.get("id"), current_id
+                    )
+            else:
+                # Rule not found in API — nothing to delete
+                self.logger.warning(
+                    "Rule '%s' not found in API; skipping delete", name
+                )
                 return True
 
-            self.logger.error("Failed to delete rule %s: %s", rule_id, response)
+            response = self.falcon.delete_rules(ids=current_id)
+
+            if response["status_code"] == 200:
+                self.logger.info("Successfully deleted rule '%s' (%s)", name, current_id)
+                return True
+
+            self.logger.error("Failed to delete rule '%s': %s", name, response)
             return False
 
         except Exception as e:
-            self.logger.error("Error deleting rule %s: %s", rule_id, str(e))
+            self.logger.error("Error deleting rule '%s': %s", rule.get("name"), str(e))
             return False
 
-    def _resolve_current_ids(self, local_rule: Dict, api_rules_by_name: Dict) -> Dict:
-        """Return a copy of local_rule with IDs refreshed from the live API state.
+    def _fetch_live_rule_by_name(self, name: str) -> Optional[Dict]:
+        """Fetch the current API state of a single rule by name.
 
-        Rule IDs (id, rule_id, executor_rule_id) change every time a rule is
-        modified in CrowdStrike. Matching by name (which is stable and drives
-        the filename) gives us the current API record, from which we pull the
-        freshest IDs before submitting any update or delete request.
+        Because CrowdStrike reassigns rule IDs on every modification, this
+        method is called immediately before any update or delete operation to
+        guarantee the request carries the ID the API currently recognises.
 
-        If the rule name is not found in the API (e.g. it was manually deleted
-        from the console) the local rule is returned unchanged and the caller
-        will handle the resulting API error gracefully.
+        Uses an FQL filter so only one rule is retrieved rather than pulling
+        the full ruleset again.  Returns None if the rule is not found.
         """
-        api_rule = api_rules_by_name.get(local_rule.get("name"))
-        if not api_rule:
-            self.logger.warning(
-                "Rule '%s' not found in API state — using local IDs as-is",
-                local_rule.get("name")
-            )
-            return local_rule
-
-        refreshed = local_rule.copy()
-        id_fields = ("id", "rule_id", "executor_rule_id")
-        for field in id_fields:
-            api_val = api_rule.get(field)
-            local_val = local_rule.get(field)
-            if api_val and api_val != local_val:
-                self.logger.debug(
-                    "Refreshing %s for '%s': %s -> %s",
-                    field, local_rule.get("name"), local_val, api_val
+        try:
+            # Strip surrounding whitespace — the console sometimes trims names
+            # that were originally saved with trailing spaces.
+            fql = f"name:'{{name.strip()}}'"
+            response = self.falcon.get_rules_combined(filter=fql, limit=5)
+            if response["status_code"] != 200:
+                self.logger.error(
+                    "Failed to look up rule '%s' by name: %s", name, response["status_code"]
                 )
-            if api_val:
-                refreshed[field] = api_val
-        return refreshed
+                return None
+
+            resources = response["body"].get("resources", [])
+            if not resources:
+                self.logger.warning("Live lookup found no rule matching name '%s'", name)
+                return None
+
+            # If multiple rules somehow share a name, pick the one whose
+            # stored name matches most exactly (prefer exact over stripped).
+            for resource in resources:
+                if resource.get("name") == name or resource.get("name") == name.strip():
+                    return resource
+
+            # Fall back to first result if no exact match
+            return resources[0]
+
+        except Exception as e:
+            self.logger.error("Error fetching rule by name '%s': %s", name, str(e))
+            return None
 
     def compare_rules(self,
                       api_rules: List[Dict],
                       local_rules: List[Dict]
-                      ) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict], Dict]:
+                      ) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
         """Compare API rules with local rules to identify updates, deletions, and creations.
 
         Matching is done by rule NAME (stable) rather than ID (changes on every
         modification) so the comparison is reliable even when IDs have drifted.
 
         Returns tuple of:
-          (rules_to_update, current_rules, rules_to_delete, rules_to_create,
-           api_rules_by_name)
+          (rules_to_update, current_rules, rules_to_delete, rules_to_create)
 
         rules_to_delete contains full rule dicts so callers can remove the
         corresponding local file after a confirmed API deletion.
-        api_rules_by_name is passed to process_updates so IDs can be refreshed
-        immediately before each API call.
+        ID resolution for updates and deletes is handled inside each API method
+        via a live _fetch_live_rule_by_name call immediately before the request.
         """
         self.logger.info("Starting rules comparison")
 
@@ -386,7 +410,7 @@ class CorrelationRulesClient:
         self.logger.info("Rules to delete: %s", len(rules_to_delete))
         self.logger.info("Rules to create: %s", len(rules_to_create))
 
-        return rules_to_update, api_rules, rules_to_delete, rules_to_create, api_rules_by_name
+        return rules_to_update, api_rules, rules_to_delete, rules_to_create
 
     def process_updates(self):  # pylint: disable=R0914
         """Process any updates update process."""
@@ -404,7 +428,7 @@ class CorrelationRulesClient:
                 return True
 
             # Continue with normal update process
-            rules_to_update, current_rules, rules_to_delete, rules_to_create, api_rules_by_name = (
+            rules_to_update, current_rules, rules_to_delete, rules_to_create = (
                 self.compare_rules(api_rules, local_rules)
             )
 
@@ -422,32 +446,30 @@ class CorrelationRulesClient:
                     create_failed.append(rule)
                     self.logger.error("Failed to create rule: %s", rule.get('name'))
 
-            # Process deletions — resolve the current API ID by name before each call
+            # Process deletions — delete_rule_from_api does a live ID lookup internally
             delete_success = []
             delete_failed = []
 
             for rule in rules_to_delete:
-                current_rule = self._resolve_current_ids(rule, api_rules_by_name)
-                if self.delete_rule_from_api(current_rule['id']):
+                if self.delete_rule_from_api(rule):
                     # Remove the local file immediately on confirmed deletion
-                    self.delete_rule_file(current_rule)
-                    delete_success.append(current_rule['id'])
+                    self.delete_rule_file(rule)
+                    delete_success.append(rule.get("name"))
                 else:
-                    delete_failed.append(current_rule['id'])
+                    delete_failed.append(rule.get("name"))
 
-            # Process updates — resolve the current API ID by name before each call
+            # Process updates — update_rule_in_api does a live ID lookup internally
             update_success = []
             update_failed = []
 
             for rule in rules_to_update:
-                current_rule = self._resolve_current_ids(rule, api_rules_by_name)
-                success, updated_rule = self.update_rule_in_api(current_rule)
+                success, updated_rule = self.update_rule_in_api(rule)
                 if success and updated_rule:
-                    # Write back the API-returned rule so IDs stay current for next run
+                    # Write back the API-returned rule so the file reflects current state
                     self.write_rule_file(updated_rule)
                     update_success.append(updated_rule)
                 else:
-                    update_failed.append(current_rule)
+                    update_failed.append(rule)
 
             # Log results
             self.logger.info("Update summary:")
@@ -512,6 +534,26 @@ class CorrelationRulesClient:
         Returns (False, None) on failure.
         """
         try:
+            # Fetch the live API record by name to get the current ID.
+            # CrowdStrike reassigns rule IDs on every modification, so the ID
+            # stored in the local file is stale after any previous change.
+            name = rule.get("name", "")
+            live = self._fetch_live_rule_by_name(name)
+            if live:
+                for id_field in ("id", "rule_id", "executor_rule_id"):
+                    live_val = live.get(id_field)
+                    if live_val and live_val != rule.get(id_field):
+                        self.logger.info(
+                            "Refreshed %s for '%s': %s -> %s",
+                            id_field, name, rule.get(id_field), live_val
+                        )
+                        rule = dict(rule)  # avoid mutating the caller's dict
+                        rule[id_field] = live_val
+            else:
+                self.logger.warning(
+                    "Could not fetch live record for '%s' — proceeding with local ID", name
+                )
+
             # Define the allowed fields for update, including nested paths
             update_fields = {
                 'id': None,
