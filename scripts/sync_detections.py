@@ -593,8 +593,13 @@ class CorrelationRulesClient:
             self.logger.info(
                 "Sending update for '%s' with id=%s", name, payload.get("id")
             )
+            self.logger.debug("Update payload: %s", payload)
 
-            response = self.falcon.update_rule(**payload)
+            # Pass the payload as a body array — the update endpoint expects
+            # [{...}] not individual kwargs. Using **payload causes FalconPy to
+            # treat 'id' as a query/path parameter rather than a body field,
+            # which is why the API returns 404 even when the ID is correct.
+            response = self.falcon.update_rule(body=[payload])
 
             if response["status_code"] == 200:
                 updated_rule = response["body"]["resources"][0]
@@ -698,7 +703,8 @@ class CorrelationRulesClient:
                 create_payload["operation"] = {"start_on": start_on}
             self.logger.debug("Set operation.start_on to %s", start_on)
 
-            response = self.falcon.create_rule(**create_payload)
+            self.logger.debug("Create payload: %s", create_payload)
+            response = self.falcon.create_rule(body=[create_payload])
 
             if response["status_code"] == 200:
                 created_rule = response["body"]["resources"][0]
