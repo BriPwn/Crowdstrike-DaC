@@ -52,6 +52,7 @@ import json
 import logging
 import os
 import traceback
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Tuple
 from falconpy import CorrelationRules
 
@@ -621,6 +622,18 @@ class CorrelationRulesClient:
             fields_to_remove = {'id', 'created_on', 'last_updated_on', 'deleted'}
             for field in fields_to_remove:
                 create_payload.pop(field, None)
+
+            # The API requires operation.start_on to be at least 15 minutes in
+            # the future. Static timestamps in rule files will always be stale,
+            # so unconditionally set it to now + 16 minutes before every create.
+            start_on = (datetime.now(timezone.utc) + timedelta(minutes=16)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            if isinstance(create_payload.get("operation"), dict):
+                create_payload["operation"]["start_on"] = start_on
+            else:
+                create_payload["operation"] = {"start_on": start_on}
+            self.logger.debug("Set operation.start_on to %s", start_on)
 
             response = self.falcon.create_rule(**create_payload)
 
