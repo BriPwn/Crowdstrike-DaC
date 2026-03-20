@@ -1,0 +1,63 @@
+{
+  "id": "019d0bdcb0a27bc98429a6c9e694d2c4",
+  "type": "correlation",
+  "name": "Kerberoasting Active Directory Detection",
+  "description": "Kerberoasting detects adversaries requesting TGS tickets for service accounts using weak RC4 encryption (0x17), enabling offline password cracking. Focuses on non-machine accounts with anomalous volume thresholds to reduce false positives.",
+  "customer_id": "3695fb05991b4d7789a13a9761d16829",
+  "tactic": "TA0006",
+  "technique": "T1558.003",
+  "mitre_attack": [
+    {
+      "tactic_id": "TA0006",
+      "technique_id": "T1558.003"
+    }
+  ],
+  "severity": 70,
+  "search": {
+    "outcome": "detection",
+    "filter": "#event_simpleName = \"KerberosServiceTicketRequested\" OR #event_simpleName = \"KerberosTicketGrantingService\"\n| EventType = \"4769\"\n| TicketEncryptionType = \"0x17\"\n| Status = \"0x0\"\n| ServiceName != /\\$$/\n| ServiceName != \"krbtgt\"\n| ServiceName != /^\\$/\n| AccountName != /\\$@/\n| groupBy([AccountName, ServiceName, ClientAddress], function=count())\n| _count > 3\n| rename(ClientAddress, as=\"AttackerIP\")\n| rename(AccountName, as=\"RequestingAccount\")\n| rename(ServiceName, as=\"TargetServiceAccount\")",
+    "lookback": "2h0m",
+    "trigger_mode": "verbose",
+    "execution_mode": "scheduled",
+    "use_ingest_time": true
+  },
+  "operation": {
+    "schedule": {
+      "definition": "@every 0h5m"
+    },
+    "start_on": "2026-03-20T15:44:25Z"
+  },
+  "api_client_id": "76d10e9a40aa4568bf044f58a3b25499",
+  "user_uuid": "",
+  "user_id": "api_client",
+  "updated_by_api_client_id": "76d10e9a40aa4568bf044f58a3b25499",
+  "updated_by_user_uuid": "",
+  "updated_by_user_id": "api_client",
+  "last_updated_on": "2026-03-20T15:28:25.762064Z",
+  "created_on": "2026-03-20T15:28:25.762064Z",
+  "status": "creating",
+  "status_msg": "",
+  "template_id": "",
+  "rule_id": "019d0bdcb0a27bc98429a6c9e694d2c4",
+  "state": "published",
+  "version": 1,
+  "notifications": [
+    {
+      "type": "email",
+      "config": {
+        "recipients": [
+          "balmond@presidio.com"
+        ],
+        "plugin_id": "",
+        "config_id": "",
+        "cid": "3695fb05991b4d7789a13a9761d16829",
+        "severity": ""
+      },
+      "options": {
+        "attach_report": "false",
+        "send_on_failure": "always",
+        "send_on_success": "never"
+      }
+    }
+  ]
+}
