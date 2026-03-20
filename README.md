@@ -1,59 +1,99 @@
-<!--
- Copyright 2025 CrowdStrike.
--->
+# CrowdStrike Detection as Code — Per-Rule File Pipeline
 
-# Detection Rules as Code
+A Detection-as-Code pipeline for managing CrowdStrike Correlation Rules through
+version control.  Each rule lives in its own JSON file under `rules/`, making
+individual rule changes clearly visible in Git diffs and pull requests.
 
-This repository contains tooling to manage CrowdStrike Correlation Rules as code, enabling version control and automated deployment of detection rules.
+Adapted from the [CrowdStrike FalconPy detection_as_code sample](https://github.com/CrowdStrike/falconpy/tree/main/samples/correlation_rules/detection_as_code).
 
-## Overview
+---
 
-The project provides a Python-based solution for managing CrowdStrike Correlation Detection Rules through code, supporting:
-- Synchronization between local rules and the API
-- Creation of new rules
-- Updates to existing rules
-- Deletion of rules
-- Version control through Git
+## Repository structure
 
-## Prerequisites
+```
+.
+├── .github/
+│   └── workflows/
+│       ├── update_correlation_rules.yml   # Push-triggered sync
+│       └── on_demand_sync.yml             # Manual full sync from API
+├── rules/
+│   ├── My_Detection_Rule.json             # One file per rule
+│   ├── Kerberoasting_Detector.json
+│   └── ...
+├── scripts/
+│   └── sync_detections.py
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## Requirements
 
 - Python 3.x
--  CrowdStrike API Credential for read & write permission on the `Correlation Rules` scope
-- Required Python packages: [crowdstrike-falconpy](https://github.com/CrowdStrike/falconpy)
-  ```bash
-  pip install crowdstrike-falconpy
-  ```
-## Setup
-- Clone the repository:
-```bash
-git clone <repository-url>
-cd detection-as-code
+- `crowdstrike-falconpy >= 1.4.8`
+
 ```
-- Set up environment variables:
+pip install -r requirements.txt
+```
+
+---
+
+## GitHub Secrets / Variables
+
+| Name | Type | Description |
+|---|---|---|
+| `FALCON_CLIENT_ID` | Secret | CrowdStrike API client ID (Correlation Rules: read+write) |
+| `FALCON_CLIENT_SECRET` | Secret | CrowdStrike API client secret |
+| `FALCON_BASE_URL` | Secret | Base URL (e.g. `https://api.crowdstrike.com`). Omit for auto-detect. |
+| `LOG_LEVEL` | Variable (optional) | Default log level. Defaults to `INFO`. |
+
+---
+
+## Local setup
+
 ```bash
 export FALCON_CLIENT_ID="your-client-id"
 export FALCON_CLIENT_SECRET="your-client-secret"
-export FALCON_BASE_URL="your-base-url"  # Optional
-export LOG_LEVEL="as-desired"  # Optional
-  - Valid values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+export FALCON_BASE_URL="your-base-url"   # optional
+export LOG_LEVEL="INFO"                  # optional
 ```
-## Usage
-### Initial Sync
-To perform initial synchronization with the API:
+
+---
+
+## First run — bootstrap from the API
+
+If the `rules/` directory is empty, the script automatically pulls all existing
+rules from your CrowdStrike tenant and writes one file per rule:
+
 ```bash
 python scripts/sync_detections.py
 ```
-This will create/update `rules/rules.json` with the current state from the API.
-### Creating New Rules
-1) Add a new rule to `rules.json` without an ID:
+
+After this runs you will see files like:
+
+```
+rules/
+  Kerberoasting_Detector.json
+  BYOVD_-_EDR_Kill.json
+  ...
+```
+
+Commit and push these files to put your existing rules under version control.
+
+---
+
+## Creating a new rule
+
+Add a new `.json` file to `rules/` without an `id` field:
+
 ```json
 {
-  "id": "",
-  "name": "New Detection Rule",
+  "name": "My New Detection Rule",
   "severity": 50,
-  "customer_id": "<<CID>>",
+  "customer_id": "<<YOUR_CID>>",
   "search": {
-    "filter": "your-query-here",
+    "filter": "event_simpleName='ProcessRollup2'+FileName='mimikatz.exe'",
     "outcome": "detection",
     "lookback": "75m",
     "trigger_mode": "summary"
@@ -62,35 +102,72 @@ This will create/update `rules/rules.json` with the current state from the API.
     "schedule": {
       "definition": "@every 1h"
     },
-    "start_on": "2025-02-18T22:30:00Z",
-  }
+    "start_on": "2025-01-01T00:00:00Z"
+  },
   "status": "active"
 }
 ```
-2) Run the sync script to create the rule in the API.
-### Updating Rules
-1) Modify the desired rule in `rules.json`
-2) Run the sync script to apply changes
-### Deleting Rules
-1) Add `"deleted": true` to the rule in rules.json
-2) Run the sync script to delete the rule from the API
-## File Structure
-```bash
-.
-├── README.md
-├── rules/
-│   └── rules.json
-└── scripts/
-    └── sync_detections.py
+
+The filename should match the rule name with spaces replaced by underscores,
+e.g. `My_New_Detection_Rule.json`.  Push to `main` and the
+`Update Correlation Rules` workflow creates the rule in the console and writes
+back the API-assigned `id` into the file automatically.
+
+---
+
+## Updating a rule
+
+Edit the relevant `rules/<rule_name>.json` file directly.  Push to `main`.
+The workflow detects the diff, calls the update API for that rule, and
+overwrites the file with the API-normalized state.
+
+---
+
+## Deleting a rule
+
+Set `"deleted": true` in the rule's JSON file and push.  The workflow deletes
+the rule from the console and then removes the local file.
+
+```json
+{
+  "id": "abc123",
+  "name": "Old Rule",
+  "deleted": true,
+  ...
+}
 ```
-## GitHub Actions
-This repository includes a GitHub Actions workflow that:
 
-- Runs on changes to rules.json
-- Validates and syncs rules with the API
+---
 
-## Required GitHub Secrets
-- FALCON_CLIENT_ID
-- FALCON_CLIENT_SECRET
-- FALCON_BASE_URL (optional)
-- LOG_LEVEL (optional)
+## Workflows
+
+### `update_correlation_rules.yml`
+
+Triggers automatically on any push to `main` that touches a file matching
+`rules/**.json`.  Also supports manual dispatch.
+
+Flow:
+1. Check out repo (full history for rebase)
+2. Run `sync_detections.py` — creates/updates/deletes rules in the console
+3. Commit updated rule files (API writes back `id` and normalized fields)
+4. `git pull --rebase origin main` to handle concurrent runs
+5. Push
+
+### `on_demand_sync.yml`
+
+Manual trigger only.  Use this when the console is the source of truth and
+you want the repo to catch up — e.g. after making bulk changes in the UI.
+
+Flow:
+1. Pull all rules from the API
+2. Write/update/remove individual rule files
+3. Show a file-level diff summary in the workflow run summary
+4. Commit and push only if changes were detected
+
+---
+
+## How `[skip ci]` prevents loops
+
+Both workflows append `[skip ci]` to their commit messages.  This prevents
+the commit the workflow pushes (the sync write-back) from triggering another
+workflow run.

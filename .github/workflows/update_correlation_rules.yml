@@ -1,0 +1,74 @@
+name: Update Correlation Rules
+
+# Triggers when any individual rule file is pushed to main, or manually.
+# The upstream sample watched rules/rules.json — this watches the whole
+# rules/ directory since each rule now lives in its own .json file.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'rules/**.json'     # Any per-rule file change triggers a sync
+  workflow_dispatch:
+    inputs:
+      log_level:
+        description: 'Log level'
+        required: false
+        default: 'INFO'
+        type: choice
+        options:
+          - INFO
+          - DEBUG
+
+jobs:
+  update-rules:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Full history required so git rebase works correctly if
+      # another commit lands on main between checkout and push.
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # sync_detections.py reads every rules/*.json file, compares each one
+      # against the API, and pushes creates/updates/deletes individually.
+      # On first run (empty rules/ dir) it bootstraps from the API.
+      - name: Sync rules with CrowdStrike API
+        env:
+          FALCON_CLIENT_ID: ${{ secrets.FALCON_CLIENT_ID }}
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+          FALCON_BASE_URL: ${{ secrets.FALCON_BASE_URL }}
+          LOG_LEVEL: ${{ inputs.log_level || vars.LOG_LEVEL || 'INFO' }}
+        run: python scripts/sync_detections.py
+
+      # Stage the entire rules/ directory — covers new files, edits, and
+      # deletions that sync_detections.py performs after confirmed API deletes.
+      - name: Commit synced rule files
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add rules/
+          git diff --staged --quiet || git commit -m "chore: sync rule files from CrowdStrike API [skip ci]"
+
+      # Rebase before push to handle concurrent workflow runs or manual
+      # commits landing between checkout and push (the original error cause).
+      - name: Pull and rebase before push
+        run: git pull --rebase origin main
+
+      - name: Push synced rule files
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
