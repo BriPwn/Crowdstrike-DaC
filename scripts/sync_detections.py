@@ -624,6 +624,22 @@ class CorrelationRulesClient:
                     live_status, name
                 )
 
+            # The API rejects a payload that contains both mitre_attack and
+            # tactic/technique — they are mutually exclusive.  Prefer mitre_attack
+            # (richer) and drop the flat fields when it is present.
+            if payload.get("mitre_attack"):
+                payload.pop("tactic", None)
+                payload.pop("technique", None)
+
+            # operation.start_on must be at least 15 minutes in the future on
+            # updates as well as creates.  Strip it entirely on updates — the
+            # rule is already scheduled and the API does not require a new
+            # start_on to change other fields.
+            if isinstance(payload.get("operation"), dict):
+                payload["operation"].pop("start_on", None)
+                # Also drop expiration_on — response-only field
+                payload["operation"].pop("expiration_on", None)
+
             self.logger.info(
                 "Sending update for '%s' with body id=%s status=%s",
                 name, payload.get("id"), payload.get("status")
