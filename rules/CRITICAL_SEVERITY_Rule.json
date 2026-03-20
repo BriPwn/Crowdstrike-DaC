@@ -1,0 +1,69 @@
+{
+  "id": "019c8eb4177f78d7acd452bdc0b44e96",
+  "type": "correlation",
+  "name": "CRITICAL SEVERITY Rule",
+  "customer_id": "3695fb05991b4d7789a13a9761d16829",
+  "tactic": "",
+  "technique": "",
+  "mitre_attack": [],
+  "severity": 90,
+  "search": {
+    "outcome": "case",
+    "filter": "event.severity > 70",
+    "lookback": "24h0m",
+    "trigger_mode": "summary",
+    "execution_mode": "scheduled",
+    "use_ingest_time": false,
+    "case_template_id": "8af570544a274bb49e027a498b00c8af"
+  },
+  "operation": {
+    "schedule": {
+      "definition": "@every 24h0m"
+    },
+    "start_on": "2026-02-23T09:45:00Z"
+  },
+  "api_client_id": "",
+  "user_uuid": "142a7e33-4ae5-4ad1-a187-b5cb72b90e30",
+  "user_id": "solomonraj.a@presidio.com",
+  "updated_by_api_client_id": "",
+  "updated_by_user_uuid": "142a7e33-4ae5-4ad1-a187-b5cb72b90e30",
+  "updated_by_user_id": "solomonraj.a@presidio.com",
+  "last_updated_on": "2026-02-24T08:11:35.019915Z",
+  "created_on": "2026-02-24T08:11:33.119424Z",
+  "status": "inactive",
+  "status_msg": "",
+  "template_id": "",
+  "rule_id": "019c89c378b57836bc8c234ca144ba95",
+  "executor_rule_id": "8c409a578058426ca93bd34f13697c1f",
+  "state": "published",
+  "version": 2,
+  "last_execution": {
+    "result_metadata": {
+      "execution_start": "2026-02-23T09:45:41.417132945Z",
+      "execution_finish": "2026-02-23T09:45:43.664114069Z",
+      "search_window_end": "2026-02-23T09:45:00Z",
+      "result_count": 8,
+      "execution_duration": 2246,
+      "use_ingest_time": false
+    }
+  },
+  "notifications": [
+    {
+      "type": "email",
+      "config": {
+        "recipients": [
+          "solomonraj.a@presidio.com"
+        ],
+        "plugin_id": "",
+        "config_id": "",
+        "cid": "3695fb05991b4d7789a13a9761d16829",
+        "severity": ""
+      },
+      "options": {
+        "attach_report": "false",
+        "send_on_failure": "always",
+        "send_on_success": "never"
+      }
+    }
+  ]
+}

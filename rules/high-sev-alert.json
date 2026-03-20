@@ -1,0 +1,71 @@
+{
+  "id": "019c566c3fa47c7492dd51564ace7fb5",
+  "type": "correlation",
+  "name": "high-sev-alert",
+  "description": "just for testing. if the severity field is high alert is triggered",
+  "customer_id": "3695fb05991b4d7789a13a9761d16829",
+  "tactic": "",
+  "technique": "",
+  "mitre_attack": [],
+  "severity": 70,
+  "search": {
+    "outcome": "case",
+    "filter": "| #type = \"new-testing-parser\"\n| severity = HIGH",
+    "lookback": "72h0m",
+    "trigger_mode": "verbose",
+    "execution_mode": "scheduled",
+    "use_ingest_time": true
+  },
+  "operation": {
+    "schedule": {
+      "definition": "@every 72h0m"
+    },
+    "start_on": "2026-02-13T10:15:00Z",
+    "stop_on": "2026-02-19T18:30:00Z"
+  },
+  "api_client_id": "",
+  "user_uuid": "142a7e33-4ae5-4ad1-a187-b5cb72b90e30",
+  "user_id": "solomonraj.a@presidio.com",
+  "updated_by_api_client_id": "",
+  "updated_by_user_uuid": "142a7e33-4ae5-4ad1-a187-b5cb72b90e30",
+  "updated_by_user_id": "solomonraj.a@presidio.com",
+  "last_updated_on": "2026-02-13T09:54:23.098123Z",
+  "created_on": "2026-02-13T09:54:20.708968Z",
+  "status": "active",
+  "status_msg": "",
+  "template_id": "",
+  "rule_id": "019c566c3fa47c7492dd51564ace7fb5",
+  "executor_rule_id": "1db9a2428aef4d5d9f07f59fed0a4f80",
+  "state": "published",
+  "version": 1,
+  "last_execution": {
+    "result_metadata": {
+      "execution_start": "2026-02-19T10:16:21.4624241Z",
+      "execution_finish": "2026-02-19T10:16:23.601202237Z",
+      "search_window_end": "2026-02-19T10:15:00Z",
+      "result_count": 0,
+      "execution_duration": 2138,
+      "use_ingest_time": true
+    }
+  },
+  "notifications": [
+    {
+      "type": "email",
+      "config": {
+        "recipients": [
+          "solomonraj.a@presidio.com",
+          "achermadurai@presidio.com"
+        ],
+        "plugin_id": "",
+        "config_id": "",
+        "cid": "3695fb05991b4d7789a13a9761d16829",
+        "severity": ""
+      },
+      "options": {
+        "attach_report": "false",
+        "send_on_failure": "always",
+        "send_on_success": "never"
+      }
+    }
+  ]
+}

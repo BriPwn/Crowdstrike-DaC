@@ -1,0 +1,75 @@
+{
+  "id": "019c8ad01e02742d897ce68d2728330b",
+  "type": "correlation",
+  "name": "LOLDrivers.io",
+  "description": "Vulnerable driver installation - https://www.loldrivers.io/drivers/30e8d598-2c60-49e4-953b-a6f620da1371/",
+  "customer_id": "0313ef60ee9540c5b89563822fffa07c",
+  "tactic": "CSTA0011",
+  "technique": "CST0029",
+  "mitre_attack": [
+    {
+      "tactic_id": "CSTA0011",
+      "technique_id": "CST0029"
+    }
+  ],
+  "severity": 70,
+  "search": {
+    "outcome": "detection",
+    "filter": "#repo=detections ExternalApiType=Event_EppDetectionSummaryEvent\n| ComputerName := rename(Hostname)\n\n// Check inputs and make ComputerName case-insensitive.\n| wildcard(field=ComputerName, pattern=\"*\", ignoreCase=true)\n\n// Check the remaining inputs.\n| wildcard(field=AgentId, pattern=\"*\", ignoreCase=true)\n| wildcard(field=CustomerIdString, pattern=\"*\", ignoreCase=true)\n| wildcard(field=SeverityName, pattern=\"*\", ignoreCase=true)\n| wildcard(field=Technique, pattern=\"*\", ignoreCase=true)\n| wildcard(field=Tactic, pattern=\"*\", ignoreCase=true)\n| CommandLine = \"sc  create Killer binpath=C:\\\\Windows\\\\Temp\\\\vulndriver.sys type=Kernel \"",
+    "lookback": "2h0m",
+    "trigger_mode": "verbose",
+    "execution_mode": "scheduled",
+    "use_ingest_time": true
+  },
+  "operation": {
+    "schedule": {
+      "definition": "@every 1h0m"
+    },
+    "start_on": "2026-02-23T14:30:00Z"
+  },
+  "api_client_id": "",
+  "user_uuid": "6d605d00-9c01-47e7-9901-7c1f7ab5c9bb",
+  "user_id": "drmejia@presidio.com",
+  "updated_by_api_client_id": "",
+  "updated_by_user_uuid": "6d605d00-9c01-47e7-9901-7c1f7ab5c9bb",
+  "updated_by_user_id": "drmejia@presidio.com",
+  "last_updated_on": "2026-02-23T14:03:43.762138Z",
+  "created_on": "2026-02-23T14:03:40.930038Z",
+  "status": "active",
+  "status_msg": "",
+  "template_id": "",
+  "rule_id": "019c8ad01e02742d897ce68d2728330b",
+  "executor_rule_id": "47c00f5c458c4cbeaee172165fd4626d",
+  "state": "published",
+  "version": 1,
+  "next_execution_on": "2026-03-20T13:30:00Z",
+  "last_execution": {
+    "result_metadata": {
+      "execution_start": "2026-03-20T12:32:34.183867455Z",
+      "execution_finish": "2026-03-20T12:32:34.774387842Z",
+      "search_window_end": "2026-03-20T12:30:00Z",
+      "result_count": 0,
+      "execution_duration": 590,
+      "use_ingest_time": true
+    }
+  },
+  "notifications": [
+    {
+      "type": "email",
+      "config": {
+        "recipients": [
+          "drmejia@presidio.com"
+        ],
+        "plugin_id": "",
+        "config_id": "",
+        "cid": "0313ef60ee9540c5b89563822fffa07c",
+        "severity": ""
+      },
+      "options": {
+        "attach_report": "false",
+        "send_on_failure": "always",
+        "send_on_success": "never"
+      }
+    }
+  ]
+}
