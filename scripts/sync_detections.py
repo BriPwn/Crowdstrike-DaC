@@ -42,7 +42,7 @@ import json
 import logging
 import os
 import traceback
-from typing import List, Dict, Tuple
+from typing import List, Dict, Optional, Tuple
 from falconpy import CorrelationRules
 
 
@@ -144,6 +144,41 @@ class CorrelationRulesClient:
         name = rule.get("name", rule.get("id", "unnamed"))
         return os.path.join(self.rules_dir, f"{self.sanitize_rule_name(name)}.json")
 
+    def write_rule_file(self, rule: Dict):
+        """Write a single rule to its own JSON file.
+
+        Used after a successful create or update so the file reflects the
+        authoritative API state (including any fields the API assigns, e.g. id).
+        """
+        try:
+            os.makedirs(self.rules_dir, exist_ok=True)
+            file_path = self.rule_file_path(rule)
+            with open(file_path, 'w', encoding="utf-8") as f:
+                json.dump(rule, f, indent=2)
+            self.logger.info("Wrote rule file: %s", os.path.basename(file_path))
+        except Exception as e:
+            self.logger.error("Error writing rule file for '%s': %s", rule.get('name'), str(e))
+            raise
+
+    def delete_rule_file(self, rule: Dict):
+        """Delete the JSON file that corresponds to the given rule dict.
+
+        Used immediately after a successful API deletion so the local directory
+        stays in sync without waiting for the end-of-run batch reconciliation.
+        """
+        try:
+            file_path = self.rule_file_path(rule)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                self.logger.info("Deleted rule file: %s", os.path.basename(file_path))
+            else:
+                self.logger.warning(
+                    "Rule file not found for deletion: %s", os.path.basename(file_path)
+                )
+        except Exception as e:
+            self.logger.error("Error deleting rule file for '%s': %s", rule.get('name'), str(e))
+            raise
+
     def load_local_rules(self) -> List[Dict]:
         """Load rules from individual per-rule JSON files in the rules directory.
 
@@ -243,10 +278,12 @@ class CorrelationRulesClient:
     def compare_rules(self,
                       api_rules: List[Dict],
                       local_rules: List[Dict]
-                      ) -> Tuple[List[Dict], List[Dict], List[str], List[Dict]]:
+                      ) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
         """Compare API rules with local rules to identify updates, deletions, and creations.
 
         Returns tuple of (rules_to_update, current_rules, rules_to_delete, rules_to_create).
+        rules_to_delete contains full rule dicts (not just IDs) so callers can remove
+        the corresponding local file immediately after a successful API deletion.
         """
         self.logger.info("Starting rules comparison")
         # Create dictionaries keyed by rule ID for easier lookup
@@ -267,11 +304,12 @@ class CorrelationRulesClient:
         rules_to_update = []
         rules_to_delete = []
 
-        # Identify rules marked for deletion in local file
+        # Identify rules marked for deletion — keep full dict so we can remove the file
         for rule in local_rules:
             if rule.get('deleted', False) and rule.get('id') in api_rules_dict:
-                rules_to_delete.append(rule['id'])
+                rules_to_delete.append(rule)
                 self.logger.info("Rule %s marked for deletion", rule['id'])
+
         # Compare each local rule with API
         for rule_id, local_rule in local_rules_with_id.items():
             if rule_id in api_rules_dict:
@@ -299,7 +337,7 @@ class CorrelationRulesClient:
             # Get current API rules
             api_rules = self.get_all_rules()
 
-            # If local rules is empty, populate with API rules
+            # If no local files exist, bootstrap the directory from the API
             if not local_rules:
                 self.logger.info("No local rule files found, populating from current API rules")
                 self.update_rules_file(api_rules)
@@ -310,16 +348,16 @@ class CorrelationRulesClient:
                 api_rules, local_rules
                 )
 
-            changes_made = False
-
             # Process creations first
             create_success = []
             create_failed = []
 
             for rule in rules_to_create:
-                if self.create_rule_in_api(rule):
-                    create_success.append(rule)
-                    changes_made = True
+                success, created_rule = self.create_rule_in_api(rule)
+                if success and created_rule:
+                    # Write the API-returned rule so the new ID is captured immediately
+                    self.write_rule_file(created_rule)
+                    create_success.append(created_rule)
                 else:
                     create_failed.append(rule)
                     self.logger.error("Failed to create rule: %s", rule.get('name'))
@@ -328,21 +366,24 @@ class CorrelationRulesClient:
             delete_success = []
             delete_failed = []
 
-            for rule_id in rules_to_delete:
-                if self.delete_rule_from_api(rule_id):
-                    delete_success.append(rule_id)
-                    changes_made = True
+            for rule in rules_to_delete:
+                if self.delete_rule_from_api(rule['id']):
+                    # Remove the local file immediately on confirmed deletion
+                    self.delete_rule_file(rule)
+                    delete_success.append(rule['id'])
                 else:
-                    delete_failed.append(rule_id)
+                    delete_failed.append(rule['id'])
 
             # Process updates
             update_success = []
             update_failed = []
 
             for rule in rules_to_update:
-                if self.update_rule_in_api(rule):
-                    update_success.append(rule)
-                    changes_made = True
+                success, updated_rule = self.update_rule_in_api(rule)
+                if success and updated_rule:
+                    # Overwrite local file with API-normalized state
+                    self.write_rule_file(updated_rule)
+                    update_success.append(updated_rule)
                 else:
                     update_failed.append(rule)
 
@@ -354,16 +395,10 @@ class CorrelationRulesClient:
             self.logger.info("Failed to delete: %s rules", len(delete_failed))
             self.logger.info("Successfully updated: %s rules", len(update_success))
             self.logger.info("Failed to update: %s rules", len(update_failed))
-
-            # If any changes were made, fetch the latest state from API
-            if changes_made:
-                self.logger.info("Changes were made, fetching latest state from API")
-                current_rules = self.get_all_rules()
-
-            self.logger.info("Total rules: %s", len(current_rules))
-
-            # Update local rules.json with current state
-            self.update_rules_file(current_rules)
+            self.logger.info("Total rules tracked locally: %s",
+                             len(create_success) + len(update_success)
+                             + len(local_rules) - len(rules_to_create)
+                             - len(delete_success))
 
             return len(create_failed) == 0 and len(update_failed) == 0 and len(delete_failed) == 0
 
@@ -407,10 +442,12 @@ class CorrelationRulesClient:
             self.logger.error("Error updating rules directory: %s", str(e))
             raise
 
-    def update_rule_in_api(self, rule: Dict) -> bool:  # noqa: C901
+    def update_rule_in_api(self, rule: Dict) -> Tuple[bool, Optional[Dict]]:  # noqa: C901
         """Update a single rule in the API.
 
-        Returns True if successful.
+        Returns (True, updated_rule) on success so the caller can immediately
+        overwrite the local file with the API-normalized rule state.
+        Returns (False, None) on failure.
         """
         try:
             # Define the allowed fields for update, including nested paths
@@ -492,20 +529,23 @@ class CorrelationRulesClient:
             response = self.falcon.update_rule(**update_payload)
 
             if response["status_code"] == 200:
+                updated_rule = response["body"]["resources"][0]
                 self.logger.info("Successfully updated rule %s", rule['id'])
-                return True
+                return True, updated_rule
 
             self.logger.error("Failed to update rule %s: %s", rule['id'], response)
-            return False
+            return False, None
 
         except Exception as e:
             self.logger.error("Error updating rule %s: %s", rule['id'], str(e))
-            return False
+            return False, None
 
-    def create_rule_in_api(self, rule: Dict) -> bool:
+    def create_rule_in_api(self, rule: Dict) -> Tuple[bool, Optional[Dict]]:
         """Create a new rule in the API.
 
-        Returns True if successful
+        Returns (True, created_rule) on success so the caller can immediately
+        write the new file with the API-assigned id and normalized fields.
+        Returns (False, None) on failure.
         """
         try:
             # Define required fields including nested paths
@@ -564,7 +604,7 @@ class CorrelationRulesClient:
             missing_fields = check_required_fields(required_fields, rule)
             if missing_fields:
                 self.logger.error("Rule missing required fields: %s", missing_fields)
-                return False
+                return False, None
 
             # Remove any fields that shouldn't be included in creation
             create_payload = rule.copy()
@@ -575,15 +615,16 @@ class CorrelationRulesClient:
             response = self.falcon.create_rule(**create_payload)
 
             if response["status_code"] == 200:
+                created_rule = response["body"]["resources"][0]
                 self.logger.info("Successfully created rule: %s", rule.get('name'))
-                return True
+                return True, created_rule
 
             self.logger.error("Failed to create rule: %s", response)
-            return False
+            return False, None
 
         except Exception as e:
             self.logger.error("Error creating rule: %s", str(e))
-            return False
+            return False, None
 
 
 def main():
