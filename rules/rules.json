@@ -16,7 +16,7 @@
     "severity": 50,
     "search": {
       "outcome": "detection",
-      "filter": "| EventType = \"4768\"\n| TicketEncryptionType = \"0x17\"  // RC4-HMAC (weak encryption, commonly abused)\n| ServiceName != \"krbtgt\"\n| ServiceName != /\\$$/  // Exclude machine accounts\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 10\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"TargetAccount\")",
+      "filter": "| EventType = \"4769\"\n| TicketEncryptionType = \"0x17\"  // RC4-HMAC (weak encryption, commonly abused)\n| ServiceName != \"krbtgt\"\n| ServiceName != /\\$$/  // Exclude machine accounts\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 10\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"TargetAccount\")",
       "lookback": "2h0m",
       "trigger_mode": "verbose",
       "execution_mode": "scheduled",
@@ -121,13 +121,13 @@
     "version": 1,
     "next_execution_on": "2026-03-20T12:05:00Z",
     "last_execution": {
-      "status_display": "Running...",
       "result_metadata": {
-        "execution_start": "2026-03-20T12:01:14Z",
+        "execution_start": "2026-03-20T12:01:37.867310937Z",
+        "execution_finish": "2026-03-20T12:01:38.968077472Z",
         "search_window_end": "2026-03-20T12:00:00Z",
         "result_count": 0,
-        "execution_duration": 0,
-        "use_ingest_time": false
+        "execution_duration": 1100,
+        "use_ingest_time": true
       }
     },
     "notifications": [
@@ -460,14 +460,14 @@
     "state": "published",
     "version": 1,
     "comment": "This is added for testing purpose",
-    "next_execution_on": "2026-03-20T12:00:00Z",
+    "next_execution_on": "2026-03-20T12:05:00Z",
     "last_execution": {
       "result_metadata": {
-        "execution_start": "2026-03-20T11:56:30.416727962Z",
-        "execution_finish": "2026-03-20T11:56:31.955392987Z",
-        "search_window_end": "2026-03-20T11:55:00Z",
+        "execution_start": "2026-03-20T12:02:01.834379849Z",
+        "execution_finish": "2026-03-20T12:02:02.897128585Z",
+        "search_window_end": "2026-03-20T12:00:00Z",
         "result_count": 0,
-        "execution_duration": 1538,
+        "execution_duration": 1062,
         "use_ingest_time": false
       }
     }
