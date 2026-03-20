@@ -1,5 +1,5 @@
 {
-  "id": "019d0c7590627bd09a53487535d480d9",
+  "id": "019d0c6c6a837b19bc524188c93b9db2",
   "type": "correlation",
   "name": "Kerberoasting Active Directory Detection",
   "description": "Kerberoasting detects adversaries requesting TGS tickets for service accounts using weak RC4 encryption (0x17), enabling offline password cracking. Focuses on non-machine accounts with anomalous volume thresholds to reduce false positives.",
@@ -15,7 +15,7 @@
   "severity": 70,
   "search": {
     "outcome": "detection",
-    "filter": "#event_simpleName = \"KerberosServiceTicketRequested\" OR #event_simpleName = \"KerberosTicketGrantingService\"\n| EventType = \"4769\"\n| TicketEncryptionType = \"0x17\"\n| Status = \"0x0\"\n| ServiceName != /\\$$/\n| ServiceName != \"krbtgt\"\n| ServiceName != /^\\$/\n| AccountName != /\\$@/\n| groupBy([AccountName, ServiceName, ClientAddress], function=count())\n| _count > 3\n| rename(ClientAddress, as=\"AttackerIP\")\n| rename(AccountName, as=\"RequestingAccount\")\n| rename(ServiceName, as=\"TargetServiceAccount\")",
+    "filter": "#event_simpleName = \"KerberosServiceTicketRequested\" OR #event_simpleName = \"KerberosTicketGrantingService\"\n| EventType = \"4768\"\n| TicketEncryptionType = \"0x17\"\n| Status = \"0x0\"\n| ServiceName != /\\$$/\n| ServiceName != \"krbtgt\"\n| ServiceName != /^\\$/\n| AccountName != /\\$@/\n| groupBy([AccountName, ServiceName, ClientAddress], function=count())\n| _count > 3\n| rename(ClientAddress, as=\"AttackerIP\")\n| rename(AccountName, as=\"RequestingAccount\")\n| rename(ServiceName, as=\"TargetServiceAccount\")",
     "lookback": "2h0m",
     "trigger_mode": "verbose",
     "execution_mode": "scheduled",
@@ -33,15 +33,14 @@
   "updated_by_api_client_id": "76d10e9a40aa4568bf044f58a3b25499",
   "updated_by_user_uuid": "",
   "updated_by_user_id": "api_client",
-  "last_updated_on": "2026-03-20T18:15:24.514867Z",
-  "created_on": "2026-03-20T18:15:24.514867Z",
-  "status": "updating",
+  "last_updated_on": "2026-03-20T18:05:24.995886Z",
+  "created_on": "2026-03-20T18:05:24.995886Z",
+  "status": "creating",
   "status_msg": "",
   "template_id": "",
   "rule_id": "019d0c6c6a837b19bc524188c93b9db2",
-  "executor_rule_id": "4c107c0d472d46fcacdb0bf21d237721",
   "state": "published",
-  "version": 2,
+  "version": 1,
   "notifications": [
     {
       "type": "email",
