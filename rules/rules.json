@@ -16,7 +16,7 @@
     "severity": 50,
     "search": {
       "outcome": "detection",
-      "filter": "| EventType = \"4768\"\n| TicketEncryptionType = \"0x17\"  // RC4-HMAC (weak encryption, commonly abused)\n| ServiceName != \"krbtgt\"\n| ServiceName != /\\$$/  // Exclude machine accounts\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 10\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"TargetAccount\")",
+      "filter": "| EventType = \"4769\"\n| TicketEncryptionType = \"0x17\"  // RC4-HMAC (weak encryption, commonly abused)\n| ServiceName != \"krbtgt\"\n| ServiceName != /\\$$/  // Exclude machine accounts\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 10\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"TargetAccount\")",
       "lookback": "2h0m",
       "trigger_mode": "verbose",
       "execution_mode": "scheduled",
@@ -44,14 +44,14 @@
     "state": "published",
     "version": 3,
     "comment": "rule updated using rules endpoint",
-    "next_execution_on": "2026-03-20T11:45:00Z",
+    "next_execution_on": "2026-03-20T11:50:00Z",
     "last_execution": {
       "result_metadata": {
-        "execution_start": "2026-03-20T11:40:37.272629416Z",
-        "execution_finish": "2026-03-20T11:40:38.361503387Z",
-        "search_window_end": "2026-03-20T11:40:00Z",
+        "execution_start": "2026-03-20T11:45:09.02897668Z",
+        "execution_finish": "2026-03-20T11:45:25.812945778Z",
+        "search_window_end": "2026-03-20T11:45:00Z",
         "result_count": 0,
-        "execution_duration": 1088,
+        "execution_duration": 16783,
         "use_ingest_time": false
       }
     },
@@ -119,14 +119,14 @@
     "executor_rule_id": "b3ed3dcfafce49868f5bd3a3bc64da51",
     "state": "published",
     "version": 1,
-    "next_execution_on": "2026-03-20T11:45:00Z",
+    "next_execution_on": "2026-03-20T11:50:00Z",
     "last_execution": {
       "result_metadata": {
-        "execution_start": "2026-03-20T11:40:54.708989049Z",
-        "execution_finish": "2026-03-20T11:40:55.116445394Z",
-        "search_window_end": "2026-03-20T11:40:00Z",
+        "execution_start": "2026-03-20T11:45:34.095942321Z",
+        "execution_finish": "2026-03-20T11:45:34.614665861Z",
+        "search_window_end": "2026-03-20T11:45:00Z",
         "result_count": 0,
-        "execution_duration": 407,
+        "execution_duration": 518,
         "use_ingest_time": true
       }
     },
@@ -460,14 +460,14 @@
     "state": "published",
     "version": 1,
     "comment": "This is added for testing purpose",
-    "next_execution_on": "2026-03-20T11:45:00Z",
+    "next_execution_on": "2026-03-20T11:50:00Z",
     "last_execution": {
       "result_metadata": {
-        "execution_start": "2026-03-20T11:41:32.759984355Z",
-        "execution_finish": "2026-03-20T11:41:33.480211733Z",
-        "search_window_end": "2026-03-20T11:40:00Z",
+        "execution_start": "2026-03-20T11:46:30.881248556Z",
+        "execution_finish": "2026-03-20T11:46:32.106775166Z",
+        "search_window_end": "2026-03-20T11:45:00Z",
         "result_count": 0,
-        "execution_duration": 720,
+        "execution_duration": 1225,
         "use_ingest_time": false
       }
     }
