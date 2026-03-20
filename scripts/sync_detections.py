@@ -307,44 +307,43 @@ class CorrelationRulesClient:
             self.logger.error("Error deleting rule '%s': %s", rule.get("name"), str(e))
             return False
 
-    def _fetch_live_rule_by_name(self, name: str) -> Optional[Dict]:
-        """Fetch the current API state of a single rule by name.
+    def _refresh_live_cache(self):
+        """Fetch all rules from the API and rebuild the name-keyed cache.
 
-        Because CrowdStrike reassigns rule IDs on every modification, this
-        method is called immediately before any update or delete operation to
-        guarantee the request carries the ID the API currently recognises.
-
-        Uses an FQL filter so only one rule is retrieved rather than pulling
-        the full ruleset again.  Returns None if the rule is not found.
+        Called once at the start of process_updates and again after any create,
+        so update and delete operations always look up against current API state.
+        The correlation rules API does not support FQL name filtering, so we
+        fetch the full list and match in Python.
         """
         try:
-            # Strip surrounding whitespace — the console sometimes trims names
-            # that were originally saved with trailing spaces.
-            fql = f"name:'{{name.strip()}}'"
-            response = self.falcon.get_rules_combined(filter=fql, limit=5)
-            if response["status_code"] != 200:
-                self.logger.error(
-                    "Failed to look up rule '%s' by name: %s", name, response["status_code"]
-                )
-                return None
-
-            resources = response["body"].get("resources", [])
-            if not resources:
-                self.logger.warning("Live lookup found no rule matching name '%s'", name)
-                return None
-
-            # If multiple rules somehow share a name, pick the one whose
-            # stored name matches most exactly (prefer exact over stripped).
-            for resource in resources:
-                if resource.get("name") == name or resource.get("name") == name.strip():
-                    return resource
-
-            # Fall back to first result if no exact match
-            return resources[0]
-
+            rules = self.get_all_rules()
+            # Index by both exact name and stripped name to tolerate whitespace
+            # differences between what was saved locally and what the API returns.
+            self._live_cache = {}
+            for rule in rules:
+                api_name = rule.get("name", "")
+                self._live_cache[api_name] = rule
+                self._live_cache[api_name.strip()] = rule
+            self.logger.debug("Live cache refreshed with %s rules", len(rules))
         except Exception as e:
-            self.logger.error("Error fetching rule by name '%s': %s", name, str(e))
-            return None
+            self.logger.error("Failed to refresh live cache: %s", str(e))
+            self._live_cache = {}
+
+    def _fetch_live_rule_by_name(self, name: str) -> Optional[Dict]:
+        """Return the current API record for a rule by name from the live cache.
+
+        The cache is keyed by both raw and stripped names so trailing-space
+        mismatches between the local file and the API are handled automatically.
+        Returns None if the rule is not found in the cache.
+        """
+        if not hasattr(self, '_live_cache'):
+            self.logger.warning("Live cache not initialised — calling _refresh_live_cache")
+            self._refresh_live_cache()
+
+        rule = self._live_cache.get(name) or self._live_cache.get(name.strip())
+        if not rule:
+            self.logger.warning("Live lookup found no rule matching name '%s'", name)
+        return rule
 
     def compare_rules(self,
                       api_rules: List[Dict],
@@ -418,8 +417,10 @@ class CorrelationRulesClient:
             # Load local rules or initialize if empty
             local_rules = self.load_local_rules()
 
-            # Get current API rules
+            # Get current API rules and build the live name cache used by
+            # update and delete operations to resolve current IDs.
             api_rules = self.get_all_rules()
+            self._refresh_live_cache()
 
             # If no local files exist, bootstrap the directory from the API
             if not local_rules:
@@ -445,6 +446,11 @@ class CorrelationRulesClient:
                 else:
                     create_failed.append(rule)
                     self.logger.error("Failed to create rule: %s", rule.get('name'))
+
+            # Refresh the cache after creates so new rules are visible to the
+            # delete and update loops if they reference the same names.
+            if create_success:
+                self._refresh_live_cache()
 
             # Process deletions — delete_rule_from_api does a live ID lookup internally
             delete_success = []
