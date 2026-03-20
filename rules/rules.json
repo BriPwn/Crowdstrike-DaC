@@ -1,6 +1,6 @@
 [
   {
-    "id": "1df9f089e4534ffb847242cce34ae4fa",
+    "id": "",
     "type": "correlation",
     "name": "Kerberoasting Detection - TGS Requests with RC4 Encryption",
     "description": "MITRE ATT&CK: T1558.003 - Steal or Forge Kerberos Tickets: Kerberoasting\n\n#event_simpleName = \"UserLogon\" OR #event_simpleName = \"KerberosTicketGrantingService\"\n| EventType = \"4769\"\n| TicketEncryptionType = \"0x17\"  // RC4-HMAC (weak encryption, commonly abused)\n| ServiceName != \"krbtgt\"\n| ServiceName != /\\$$/  // Exclude machine accounts\n| groupBy([SourceIP, TargetUserName], function=count(), span=5m)\n| _count > 10\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"TargetAccount\")",
