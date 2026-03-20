@@ -155,55 +155,18 @@ class CorrelationRulesClient:
         name = rule.get("name", rule.get("id", "unnamed"))
         return os.path.join(self.rules_dir, f"{self.sanitize_rule_name(name)}.json")
 
-    # ID fields assigned once on creation — never overwritten by API responses.
-    _STABLE_ID_FIELDS = ("id", "rule_id", "executor_rule_id")
-
-    def _preserve_ids(self, incoming: Dict, file_path: str) -> Dict:
-        """Return a copy of incoming with stable ID fields pinned from the
-        existing local file.
-
-        If no local file exists yet (first create), incoming is returned
-        unchanged so the API-assigned IDs are captured on first write.
-        On every subsequent write those IDs are locked in.
-        """
-        if not os.path.exists(file_path):
-            return incoming
-
-        try:
-            with open(file_path, 'r', encoding="utf-8") as f:
-                existing = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            self.logger.warning(
-                "Could not read existing file for ID preservation (%s): %s",
-                os.path.basename(file_path), str(e)
-            )
-            return incoming
-
-        result = incoming.copy()
-        for field in self._STABLE_ID_FIELDS:
-            existing_val = existing.get(field)
-            if existing_val:
-                if result.get(field) != existing_val:
-                    self.logger.debug(
-                        "Pinning %s=%s (API returned %s)",
-                        field, existing_val, result.get(field)
-                    )
-                result[field] = existing_val
-        return result
 
     def write_rule_file(self, rule: Dict):
-        """Write a single rule to its own JSON file, preserving stable IDs.
+        """Write a single rule to its own JSON file.
 
-        On first write the API-assigned IDs are captured. On all subsequent
-        writes those IDs are pinned from the local file so API response drift
-        cannot overwrite them.
+        Always writes the dict as-is — callers are responsible for ensuring
+        the rule contains the current API IDs before calling this method.
         """
         try:
             os.makedirs(self.rules_dir, exist_ok=True)
             file_path = self.rule_file_path(rule)
-            rule_to_write = self._preserve_ids(rule, file_path)
             with open(file_path, 'w', encoding="utf-8") as f:
-                json.dump(rule_to_write, f, indent=2)
+                json.dump(rule, f, indent=2)
             self.logger.info("Wrote rule file: %s", os.path.basename(file_path))
         except Exception as e:
             self.logger.error("Error writing rule file for '%s': %s", rule.get('name'), str(e))
@@ -324,49 +287,97 @@ class CorrelationRulesClient:
             self.logger.error("Error deleting rule %s: %s", rule_id, str(e))
             return False
 
+    def _resolve_current_ids(self, local_rule: Dict, api_rules_by_name: Dict) -> Dict:
+        """Return a copy of local_rule with IDs refreshed from the live API state.
+
+        Rule IDs (id, rule_id, executor_rule_id) change every time a rule is
+        modified in CrowdStrike. Matching by name (which is stable and drives
+        the filename) gives us the current API record, from which we pull the
+        freshest IDs before submitting any update or delete request.
+
+        If the rule name is not found in the API (e.g. it was manually deleted
+        from the console) the local rule is returned unchanged and the caller
+        will handle the resulting API error gracefully.
+        """
+        api_rule = api_rules_by_name.get(local_rule.get("name"))
+        if not api_rule:
+            self.logger.warning(
+                "Rule '%s' not found in API state — using local IDs as-is",
+                local_rule.get("name")
+            )
+            return local_rule
+
+        refreshed = local_rule.copy()
+        id_fields = ("id", "rule_id", "executor_rule_id")
+        for field in id_fields:
+            api_val = api_rule.get(field)
+            local_val = local_rule.get(field)
+            if api_val and api_val != local_val:
+                self.logger.debug(
+                    "Refreshing %s for '%s': %s -> %s",
+                    field, local_rule.get("name"), local_val, api_val
+                )
+            if api_val:
+                refreshed[field] = api_val
+        return refreshed
+
     def compare_rules(self,
                       api_rules: List[Dict],
                       local_rules: List[Dict]
-                      ) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
+                      ) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict], Dict]:
         """Compare API rules with local rules to identify updates, deletions, and creations.
 
-        Returns tuple of (rules_to_update, current_rules, rules_to_delete, rules_to_create).
-        rules_to_delete contains full rule dicts (not just IDs) so callers can remove
-        the corresponding local file immediately after a successful API deletion.
+        Matching is done by rule NAME (stable) rather than ID (changes on every
+        modification) so the comparison is reliable even when IDs have drifted.
+
+        Returns tuple of:
+          (rules_to_update, current_rules, rules_to_delete, rules_to_create,
+           api_rules_by_name)
+
+        rules_to_delete contains full rule dicts so callers can remove the
+        corresponding local file after a confirmed API deletion.
+        api_rules_by_name is passed to process_updates so IDs can be refreshed
+        immediately before each API call.
         """
         self.logger.info("Starting rules comparison")
-        # Create dictionaries keyed by rule ID for easier lookup
-        api_rules_dict = {rule['id']: rule for rule in api_rules}
 
-        # Separate local rules into those with and without IDs
-        local_rules_with_id = {}
+        # Index API rules by name — name is the only stable identifier
+        api_rules_by_name = {rule['name']: rule for rule in api_rules}
+
         rules_to_create = []
-
-        for rule in local_rules:
-            if rule.get('id'):  # Existing rule
-                if not rule.get('deleted', False):  # Not marked for deletion
-                    local_rules_with_id[rule['id']] = rule
-            else:  # New rule without ID
-                rules_to_create.append(rule)
-                self.logger.info("New rule to create: %s", rule.get('name', 'unnamed'))
-
         rules_to_update = []
         rules_to_delete = []
 
-        # Identify rules marked for deletion — keep full dict so we can remove the file
         for rule in local_rules:
-            if rule.get('deleted', False) and rule.get('id') in api_rules_dict:
-                rules_to_delete.append(rule)
-                self.logger.info("Rule %s marked for deletion", rule['id'])
+            name = rule.get('name', '')
 
-        # Compare each local rule with API
-        for rule_id, local_rule in local_rules_with_id.items():
-            if rule_id in api_rules_dict:
-                if self.is_rule_different(local_rule, api_rules_dict[rule_id]):
-                    self.logger.info("Rule %s has changes and will be updated", rule_id)
-                    rules_to_update.append(local_rule)
-            else:
-                self.logger.info("Rule %s exists in local but not in API", rule_id)
+            if rule.get('deleted', False):
+                # Only queue deletion if the rule still exists in the API
+                if name in api_rules_by_name:
+                    rules_to_delete.append(rule)
+                    self.logger.info("Rule '%s' marked for deletion", name)
+                else:
+                    self.logger.info(
+                        "Rule '%s' marked deleted but not found in API — skipping", name
+                    )
+                continue
+
+            if not rule.get('id'):
+                # No ID means it has never been pushed — create it
+                rules_to_create.append(rule)
+                self.logger.info("New rule to create: %s", name or 'unnamed')
+                continue
+
+            if name not in api_rules_by_name:
+                self.logger.warning(
+                    "Rule '%s' (id=%s) not found in API by name — skipping", name, rule.get('id')
+                )
+                continue
+
+            api_rule = api_rules_by_name[name]
+            if self.is_rule_different(rule, api_rule):
+                self.logger.info("Rule '%s' has local changes — will update", name)
+                rules_to_update.append(rule)
 
         self.logger.info("Comparison summary:")
         self.logger.info("Total API rules: %s", len(api_rules))
@@ -375,7 +386,7 @@ class CorrelationRulesClient:
         self.logger.info("Rules to delete: %s", len(rules_to_delete))
         self.logger.info("Rules to create: %s", len(rules_to_create))
 
-        return rules_to_update, api_rules, rules_to_delete, rules_to_create
+        return rules_to_update, api_rules, rules_to_delete, rules_to_create, api_rules_by_name
 
     def process_updates(self):  # pylint: disable=R0914
         """Process any updates update process."""
@@ -393,9 +404,9 @@ class CorrelationRulesClient:
                 return True
 
             # Continue with normal update process
-            rules_to_update, current_rules, rules_to_delete, rules_to_create = self.compare_rules(
-                api_rules, local_rules
-                )
+            rules_to_update, current_rules, rules_to_delete, rules_to_create, api_rules_by_name = (
+                self.compare_rules(api_rules, local_rules)
+            )
 
             # Process creations first
             create_success = []
@@ -404,37 +415,39 @@ class CorrelationRulesClient:
             for rule in rules_to_create:
                 success, created_rule = self.create_rule_in_api(rule)
                 if success and created_rule:
-                    # Write the API-returned rule so the new ID is captured immediately
+                    # Write the API-returned rule so the assigned IDs are captured immediately
                     self.write_rule_file(created_rule)
                     create_success.append(created_rule)
                 else:
                     create_failed.append(rule)
                     self.logger.error("Failed to create rule: %s", rule.get('name'))
 
-            # Process deletions
+            # Process deletions — resolve the current API ID by name before each call
             delete_success = []
             delete_failed = []
 
             for rule in rules_to_delete:
-                if self.delete_rule_from_api(rule['id']):
+                current_rule = self._resolve_current_ids(rule, api_rules_by_name)
+                if self.delete_rule_from_api(current_rule['id']):
                     # Remove the local file immediately on confirmed deletion
-                    self.delete_rule_file(rule)
-                    delete_success.append(rule['id'])
+                    self.delete_rule_file(current_rule)
+                    delete_success.append(current_rule['id'])
                 else:
-                    delete_failed.append(rule['id'])
+                    delete_failed.append(current_rule['id'])
 
-            # Process updates
+            # Process updates — resolve the current API ID by name before each call
             update_success = []
             update_failed = []
 
             for rule in rules_to_update:
-                success, updated_rule = self.update_rule_in_api(rule)
+                current_rule = self._resolve_current_ids(rule, api_rules_by_name)
+                success, updated_rule = self.update_rule_in_api(current_rule)
                 if success and updated_rule:
-                    # Overwrite local file with API-normalized state
+                    # Write back the API-returned rule so IDs stay current for next run
                     self.write_rule_file(updated_rule)
                     update_success.append(updated_rule)
                 else:
-                    update_failed.append(rule)
+                    update_failed.append(current_rule)
 
             # Log results
             self.logger.info("Update summary:")
@@ -472,10 +485,8 @@ class CorrelationRulesClient:
                 file_path = self.rule_file_path(rule)
                 filename = os.path.basename(file_path)
                 expected_files.add(filename)
-                # Pin stable IDs from any existing local file before writing
-                rule_to_write = self._preserve_ids(rule, file_path)
                 with open(file_path, 'w', encoding="utf-8") as f:
-                    json.dump(rule_to_write, f, indent=2)
+                    json.dump(rule, f, indent=2)
                 self.logger.debug("Wrote rule to %s", filename)
 
             # Remove stale rule files that are no longer in the current ruleset
