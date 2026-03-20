@@ -15,7 +15,7 @@
   "severity": 70,
   "search": {
     "outcome": "detection",
-    "filter": "#event_simpleName = \"KerberosServiceTicketRequested\" OR #event_simpleName = \"KerberosTicketGrantingService\"\n| EventType = \"4769\"\n| TicketEncryptionType = \"0x17\"\n| Status = \"0x0\"\n| ServiceName != /\\$$/\n| ServiceName != \"krbtgt\"\n| ServiceName != /^\\$/\n| AccountName != /\\$@/\n| groupBy([AccountName, ServiceName, ClientAddress], function=count())\n| _count > 3\n| rename(ClientAddress, as=\"AttackerIP\")\n| rename(AccountName, as=\"RequestingAccount\")\n| rename(ServiceName, as=\"TargetServiceAccount\")",
+    "filter": "#event_simpleName = \"KerberosServiceTicketRequested\" OR #event_simpleName = \"KerberosTicketGrantingService\"\n| EventType = \"4760\"\n| TicketEncryptionType = \"0x17\"\n| Status = \"0x0\"\n| ServiceName != /\\$$/\n| ServiceName != \"krbtgt\"\n| ServiceName != /^\\$/\n| AccountName != /\\$@/\n| groupBy([AccountName, ServiceName, ClientAddress], function=count())\n| _count > 3\n| rename(ClientAddress, as=\"AttackerIP\")\n| rename(AccountName, as=\"RequestingAccount\")\n| rename(ServiceName, as=\"TargetServiceAccount\")",
     "lookback": "2h0m",
     "trigger_mode": "verbose",
     "execution_mode": "scheduled",
