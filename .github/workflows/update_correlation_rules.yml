@@ -1,14 +1,11 @@
 name: Update Correlation Rules
 
-# Triggers when any individual rule file is pushed to main, or manually.
-# The upstream sample watched rules/rules.json — this watches the whole
-# rules/ directory since each rule now lives in its own .json file.
 on:
   push:
     branches:
       - main
     paths:
-      - 'rules/**.json'     # Any per-rule file change triggers a sync
+      - 'rules/**.json'
   workflow_dispatch:
     inputs:
       log_level:
@@ -25,8 +22,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Full history required so git rebase works correctly if
-      # another commit lands on main between checkout and push.
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -42,10 +37,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # sync_detections.py reads every rules/*.json file, compares each one
-      # against the API, and pushes creates/updates/deletes individually.
-      # On first run (empty rules/ dir) it bootstraps from the API.
+      # sync_detections.py exits 1 if any create/update/delete fails.
+      # The step fails here — commit and push steps below will not run.
       - name: Sync rules with CrowdStrike API
+        id: sync
         env:
           FALCON_CLIENT_ID: ${{ secrets.FALCON_CLIENT_ID }}
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
@@ -53,8 +48,7 @@ jobs:
           LOG_LEVEL: ${{ inputs.log_level || vars.LOG_LEVEL || 'INFO' }}
         run: python scripts/sync_detections.py
 
-      # Stage the entire rules/ directory — covers new files, edits, and
-      # deletions that sync_detections.py performs after confirmed API deletes.
+      # Only reached if the sync step exited 0 (all operations succeeded).
       - name: Commit synced rule files
         run: |
           git config --local user.email "action@github.com"
@@ -62,8 +56,6 @@ jobs:
           git add rules/
           git diff --staged --quiet || git commit -m "chore: sync rule files from CrowdStrike API [skip ci]"
 
-      # Rebase before push to handle concurrent workflow runs or manual
-      # commits landing between checkout and push (the original error cause).
       - name: Pull and rebase before push
         run: git pull --rebase origin main
 

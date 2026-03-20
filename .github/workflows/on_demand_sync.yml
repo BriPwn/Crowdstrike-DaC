@@ -1,10 +1,5 @@
 name: On-Demand Rule Sync
 
-# Pull the current state of all rules from the CrowdStrike API and write
-# each one to its own rules/<rule_name>.json file.  Any rules deleted in
-# the console will have their local files removed automatically by the
-# sync script.  Run this whenever the console is the source of truth and
-# you want the repo to catch up.
 on:
   workflow_dispatch:
     inputs:
@@ -37,11 +32,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Pull every rule from the API.  If the rules/ directory is empty
-      # (e.g. a fresh clone) the script bootstraps by writing one file per
-      # rule.  If files already exist it reconciles additions, changes, and
-      # deletions against the API state.
+      # Exits 1 if any operation fails — commit and push steps will not run.
       - name: Pull latest rules from CrowdStrike API
+        id: sync
         env:
           FALCON_CLIENT_ID: ${{ secrets.FALCON_CLIENT_ID }}
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
@@ -49,8 +42,7 @@ jobs:
           LOG_LEVEL: ${{ inputs.log_level }}
         run: python scripts/sync_detections.py
 
-      # Detect whether any rule files were added, changed, or removed.
-      # Write a per-file diff summary to the workflow run summary page.
+      # Only reached if the sync step exited 0.
       - name: Check for changes
         id: diff
         run: |
@@ -77,8 +69,6 @@ jobs:
           git config --local user.name "GitHub Action"
           git commit -m "chore: on-demand sync from CrowdStrike API [skip ci]"
 
-      # Rebase before push in case another run or manual push landed on
-      # main between our checkout and now.
       - name: Pull and rebase before push
         if: steps.diff.outputs.changed == 'true'
         run: git pull --rebase origin main

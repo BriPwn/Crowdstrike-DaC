@@ -51,6 +51,7 @@ Adapted by:    Presidio Cybersecurity Practice
 import json
 import logging
 import os
+import sys
 import traceback
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Tuple
@@ -797,4 +798,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
