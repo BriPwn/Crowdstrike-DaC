@@ -307,24 +307,30 @@ class CorrelationRulesClient:
             self.logger.error("Error deleting rule '%s': %s", rule.get("name"), str(e))
             return False
 
-    def _refresh_live_cache(self):
-        """Fetch all rules from the API and rebuild the name-keyed cache.
+    def _refresh_live_cache(self, rules: List[Dict] = None):
+        """Build or rebuild the name-keyed live cache.
 
-        Called once at the start of process_updates and again after any create,
-        so update and delete operations always look up against current API state.
-        The correlation rules API does not support FQL name filtering, so we
-        fetch the full list and match in Python.
+        If `rules` is supplied (e.g. the api_rules list already fetched in
+        process_updates) the cache is built from that list with no extra API
+        call.  If `rules` is None a fresh get_all_rules() call is made — used
+        when a mid-run refresh is needed after creates, or as a fallback when
+        the cache has not been initialised yet.
+
+        Keyed by both raw and .strip()-ed name to tolerate trailing-space
+        mismatches between local files and the API.
         """
         try:
-            rules = self.get_all_rules()
-            # Index by both exact name and stripped name to tolerate whitespace
-            # differences between what was saved locally and what the API returns.
+            if rules is None:
+                self.logger.debug("_refresh_live_cache: fetching fresh rule list from API")
+                rules = self.get_all_rules()
             self._live_cache = {}
             for rule in rules:
                 api_name = rule.get("name", "")
                 self._live_cache[api_name] = rule
                 self._live_cache[api_name.strip()] = rule
-            self.logger.debug("Live cache refreshed with %s rules", len(rules))
+            self.logger.info("Live cache built with %s rules", len(rules))
+            for n, r in self._live_cache.items():
+                self.logger.debug("  cache entry: %r -> id=%s", n, r.get("id"))
         except Exception as e:
             self.logger.error("Failed to refresh live cache: %s", str(e))
             self._live_cache = {}
@@ -419,8 +425,9 @@ class CorrelationRulesClient:
 
             # Get current API rules and build the live name cache used by
             # update and delete operations to resolve current IDs.
+            # Pass the already-fetched list to avoid a redundant second API call.
             api_rules = self.get_all_rules()
-            self._refresh_live_cache()
+            self._refresh_live_cache(rules=api_rules)
 
             # If no local files exist, bootstrap the directory from the API
             if not local_rules:
@@ -532,122 +539,79 @@ class CorrelationRulesClient:
             self.logger.error("Error updating rules directory: %s", str(e))
             raise
 
-    def update_rule_in_api(self, rule: Dict) -> Tuple[bool, Optional[Dict]]:  # noqa: C901
+    def update_rule_in_api(self, rule: Dict) -> Tuple[bool, Optional[Dict]]:
         """Update a single rule in the API.
 
-        Returns (True, updated_rule) on success so the caller can immediately
-        overwrite the local file with the API-normalized rule state.
-        Returns (False, None) on failure.
+        Strategy: use the live API record as the base payload (guaranteed
+        current ID and all required fields), then overlay only the user-editable
+        fields from the local file.  This avoids the build_payload approach that
+        was silently dropping fields the API requires (notifications, mitre_attack,
+        operation, state, etc.) and was using stale IDs from the local file.
+
+        Returns (True, updated_rule) on success, (False, None) on failure.
         """
+        # Fields the user can edit in the local file that get overlaid onto
+        # the live API record before sending.  Only these are ever written back
+        # from the local file; everything else comes from the live record.
+        USER_EDITABLE_FIELDS = (
+            "name", "description", "severity", "tactic", "technique",
+            "search", "status", "state", "notifications", "mitre_attack",
+            "operation",
+        )
+
         try:
-            # Fetch the live API record by name to get the current ID.
-            # CrowdStrike reassigns rule IDs on every modification, so the ID
-            # stored in the local file is stale after any previous change.
             name = rule.get("name", "")
+
+            # Always fetch the live record immediately before the call.
+            # The live record carries the current id, rule_id, executor_rule_id,
+            # and all non-editable fields the API needs in the update body.
             live = self._fetch_live_rule_by_name(name)
-            if live:
-                for id_field in ("id", "rule_id", "executor_rule_id"):
-                    live_val = live.get(id_field)
-                    if live_val and live_val != rule.get(id_field):
-                        self.logger.info(
-                            "Refreshed %s for '%s': %s -> %s",
-                            id_field, name, rule.get(id_field), live_val
-                        )
-                        rule = dict(rule)  # avoid mutating the caller's dict
-                        rule[id_field] = live_val
-            else:
-                self.logger.warning(
-                    "Could not fetch live record for '%s' — proceeding with local ID", name
+            if not live:
+                self.logger.error(
+                    "Cannot update '%s': rule not found in live API state", name
                 )
+                return False, None
 
-            # Define the allowed fields for update, including nested paths
-            update_fields = {
-                'id': None,
-                'name': None,
-                'description': None,
-                'severity': None,
-                'tactic': None,
-                'technique': None,
-                'search': {
-                    'outcome': None,
-                    'filter': None,
-                    'lookback': None,
-                    'trigger_mode': None
-                }
-            }
+            # Start from the live record so IDs and system fields are always current.
+            payload = dict(live)
 
-            # Helper function to get nested values
-            def get_nested_value(source: Dict, field_path: List[str]) -> any:
-                current = source
-                for part in field_path:
-                    if part not in current:
-                        return None
-                    current = current[part]
-                return current
+            # Overlay user-editable fields from the local file.
+            for field in USER_EDITABLE_FIELDS:
+                if field in rule and rule[field] is not None:
+                    payload[field] = rule[field]
 
-            # Helper function to set nested values
-            def set_nested_value(target: Dict, field_path: List[str], value: any):
-                current = target
-                for part in field_path[:-1]:
-                    current = current.setdefault(part, {})
-                if value is not None:
-                    current[field_path[-1]] = value
+            # Strip read-only / response-only fields the API rejects on update.
+            for ro_field in (
+                "created_on", "last_updated_on", "customer_id", "type",
+                "api_client_id", "user_uuid", "user_id", "updated_by_api_client_id",
+                "updated_by_user_uuid", "updated_by_user_id", "executor_rule_id",
+                "rule_id", "template_id", "version", "next_execution_on",
+                "last_execution", "status_msg", "deleted",
+            ):
+                payload.pop(ro_field, None)
 
-            # Build update payload recursively  # pylint: disable=R0912
-            def build_payload(template: Dict,
-                              source: Dict,
-                              current_path: List[str] = None
-                              ) -> Dict:
-                if current_path is None:
-                    current_path = []
+            self.logger.info(
+                "Sending update for '%s' with id=%s", name, payload.get("id")
+            )
 
-                result = {}
-                for key, value in template.items():
-                    path = current_path + [key]
-                    if value is None:
-                        # Leaf node
-                        source_value = get_nested_value(source, path)
-                        if source_value is not None:
-                            set_nested_value(result, path, source_value)
-                    elif isinstance(value, dict):
-                        # Handle nested search object specifically
-                        if key == 'search' and 'search' in source and isinstance(
-                            source['search'], dict
-                            ):
-                            # If source has nested search.search, use its contents
-                            if 'search' in source['search']:
-                                source_value = source['search']['search']
-                            else:
-                                source_value = source['search']
-
-                            nested_result = {}
-                            for subkey in value.keys():
-                                if subkey in source_value:
-                                    nested_result[subkey] = source_value[subkey]
-
-                            if nested_result:
-                                set_nested_value(result, path, nested_result)
-                        else:
-                            # Normal nested structure
-                            nested_result = build_payload(value, source, path)
-                            if nested_result:
-                                set_nested_value(result, path, nested_result)
-                return result
-
-            update_payload = build_payload(update_fields, rule)
-
-            response = self.falcon.update_rule(**update_payload)
+            response = self.falcon.update_rule(**payload)
 
             if response["status_code"] == 200:
                 updated_rule = response["body"]["resources"][0]
-                self.logger.info("Successfully updated rule %s", rule['id'])
+                self.logger.info(
+                    "Successfully updated '%s' -> new id=%s",
+                    name, updated_rule.get("id")
+                )
                 return True, updated_rule
 
-            self.logger.error("Failed to update rule %s: %s", rule['id'], response)
+            self.logger.error(
+                "Failed to update '%s' (id=%s): %s",
+                name, payload.get("id"), response
+            )
             return False, None
 
         except Exception as e:
-            self.logger.error("Error updating rule %s: %s", rule['id'], str(e))
+            self.logger.error("Error updating rule '%s': %s", rule.get("name"), str(e))
             return False, None
 
     def create_rule_in_api(self, rule: Dict) -> Tuple[bool, Optional[Dict]]:
