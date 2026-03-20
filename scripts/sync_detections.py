@@ -602,12 +602,31 @@ class CorrelationRulesClient:
                 "api_client_id", "user_uuid", "user_id", "updated_by_api_client_id",
                 "updated_by_user_uuid", "updated_by_user_id", "executor_rule_id",
                 "rule_id", "template_id", "version", "next_execution_on",
-                "last_execution", "status_msg", "deleted",
+                "last_execution", "status_msg", "deleted", "state",
             ):
                 payload.pop(ro_field, None)
 
+            # The PATCH endpoint only accepts status: "active" | "inactive".
+            # The live record may carry transient values like "updating" that
+            # CrowdStrike sets internally — normalise any non-accepted value to
+            # whatever the local file intended, falling back to "active".
+            valid_statuses = {"active", "inactive"}
+            local_status = rule.get("status", "")
+            live_status = live.get("status", "")
+            if local_status in valid_statuses:
+                payload["status"] = local_status
+            elif live_status in valid_statuses:
+                payload["status"] = live_status
+            else:
+                payload["status"] = "active"
+                self.logger.info(
+                    "Status '%s' is not valid for PATCH — defaulting to 'active' for '%s'",
+                    live_status, name
+                )
+
             self.logger.info(
-                "Sending update for '%s' with body id=%s", name, payload.get("id")
+                "Sending update for '%s' with body id=%s status=%s",
+                name, payload.get("id"), payload.get("status")
             )
             self.logger.debug("Update payload: %s", payload)
 
