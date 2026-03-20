@@ -563,14 +563,22 @@ class CorrelationRulesClient:
             name = rule.get("name", "")
 
             # Always fetch the live record immediately before the call.
-            # The live record carries the current id, rule_id, executor_rule_id,
-            # and all non-editable fields the API needs in the update body.
             live = self._fetch_live_rule_by_name(name)
             if not live:
                 self.logger.error(
                     "Cannot update '%s': rule not found in live API state", name
                 )
                 return False, None
+
+            # Log all three ID fields from the live record so we can see exactly
+            # which identifier the API is returning and which one we should use.
+            self.logger.info(
+                "Live record for '%s': id=%s  rule_id=%s  executor_rule_id=%s",
+                name,
+                live.get("id"),
+                live.get("rule_id"),
+                live.get("executor_rule_id"),
+            )
 
             # Start from the live record so IDs and system fields are always current.
             payload = dict(live)
@@ -579,6 +587,14 @@ class CorrelationRulesClient:
             for field in USER_EDITABLE_FIELDS:
                 if field in rule and rule[field] is not None:
                     payload[field] = rule[field]
+
+            # The PATCH endpoint looks up the rule by the `id` field in the body,
+            # but CrowdStrike's read/write planes use different identifiers.
+            # `id` from get_rules_combined is the read-side record ID; the write
+            # side may use `rule_id` instead.  Try rule_id as the body id first;
+            # fall back to the native id if rule_id is absent.
+            write_id = live.get("rule_id") or live.get("id")
+            payload["id"] = write_id
 
             # Strip read-only / response-only fields the API rejects on update.
             for ro_field in (
@@ -591,14 +607,10 @@ class CorrelationRulesClient:
                 payload.pop(ro_field, None)
 
             self.logger.info(
-                "Sending update for '%s' with id=%s", name, payload.get("id")
+                "Sending update for '%s' with body id=%s", name, payload.get("id")
             )
             self.logger.debug("Update payload: %s", payload)
 
-            # Pass the payload as a body array — the update endpoint expects
-            # [{...}] not individual kwargs. Using **payload causes FalconPy to
-            # treat 'id' as a query/path parameter rather than a body field,
-            # which is why the API returns 404 even when the ID is correct.
             response = self.falcon.update_rule(body=[payload])
 
             if response["status_code"] == 200:
@@ -608,6 +620,22 @@ class CorrelationRulesClient:
                     name, updated_rule.get("id")
                 )
                 return True, updated_rule
+
+            # If rule_id didn't work, retry once with the native id.
+            if response["status_code"] == 404 and write_id != live.get("id"):
+                self.logger.warning(
+                    "404 with rule_id=%s for '%s', retrying with native id=%s",
+                    write_id, name, live.get("id")
+                )
+                payload["id"] = live.get("id")
+                response = self.falcon.update_rule(body=[payload])
+                if response["status_code"] == 200:
+                    updated_rule = response["body"]["resources"][0]
+                    self.logger.info(
+                        "Retry with native id succeeded for '%s' -> new id=%s",
+                        name, updated_rule.get("id")
+                    )
+                    return True, updated_rule
 
             self.logger.error(
                 "Failed to update '%s' (id=%s): %s",
