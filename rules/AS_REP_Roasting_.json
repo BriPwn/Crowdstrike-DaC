@@ -1,5 +1,5 @@
 {
-  "id": "019d0b65a5477b9a8003a62e5e55055f",
+  "id": "019d1c2f18fe769a88797b94a039eed8",
   "type": "correlation",
   "name": "AS REP Roasting ",
   "description": "AS Rep Roasting detects the exploitation of accounts that lack Kerberos pre-authentication.",
@@ -33,15 +33,15 @@
   "updated_by_api_client_id": "76d10e9a40aa4568bf044f58a3b25499",
   "updated_by_user_uuid": "",
   "updated_by_user_id": "api_client",
-  "last_updated_on": "2026-03-20T13:18:24.071453Z",
-  "created_on": "2026-03-20T13:18:24.071453Z",
+  "last_updated_on": "2026-03-23T19:32:21.886299Z",
+  "created_on": "2026-03-23T19:32:21.886299Z",
   "status": "updating",
   "status_msg": "",
   "template_id": "",
   "rule_id": "b3ed3dcfafce49868f5bd3a3bc64da51",
   "executor_rule_id": "b3ed3dcfafce49868f5bd3a3bc64da51",
   "state": "published",
-  "version": 2,
+  "version": 3,
   "notifications": [
     {
       "type": "email",
