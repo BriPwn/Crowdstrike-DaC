@@ -15,7 +15,7 @@
   "severity": 50,
   "search": {
     "outcome": "detection",
-    "filter": "#event_simpleName = \"UserLogon\" OR #event_simpleName = \"KerberosAuthenticationService\"\n| EventType = \"4769\"\n| PreAuthType = \"0x0\"\n| Status = \"0x0\"\n| TargetUserName != /\\$$/\n| TargetUserName != \"krbtgt\"\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 5\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"VulnerableAccount\")",
+    "filter": "#event_simpleName = \"UserLogon\" OR #event_simpleName = \"KerberosAuthenticationService\"\n| EventType = \"4768\"\n| PreAuthType = \"0x0\"\n| Status = \"0x0\"\n| TargetUserName != /\\$$/\n| TargetUserName != \"krbtgt\"\n| groupBy([SourceIP, TargetUserName], function=count())\n| _count > 5\n| rename(SourceIP, as=\"AttackerIP\")\n| rename(TargetUserName, as=\"VulnerableAccount\")",
     "lookback": "2h0m",
     "trigger_mode": "verbose",
     "execution_mode": "scheduled",
