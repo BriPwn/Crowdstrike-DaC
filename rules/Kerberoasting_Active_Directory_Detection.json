@@ -1,5 +1,5 @@
 {
-  "id": "019d0ce44ffd7bd2ab135611059f9b19",
+  "id": "019d1be916aa7580acbccdb8f13f03d4",
   "type": "correlation",
   "name": "Kerberoasting Active Directory Detection",
   "description": "Kerberoasting detects adversaries requesting TGS tickets for service accounts using weak RC4 encryption (0x17), enabling offline password cracking. Focuses on non-machine accounts with anomalous volume thresholds to reduce false positives.",
@@ -33,15 +33,15 @@
   "updated_by_api_client_id": "76d10e9a40aa4568bf044f58a3b25499",
   "updated_by_user_uuid": "",
   "updated_by_user_id": "api_client",
-  "last_updated_on": "2026-03-20T20:16:22.525108Z",
-  "created_on": "2026-03-20T20:16:22.525108Z",
+  "last_updated_on": "2026-03-23T18:15:53.770843Z",
+  "created_on": "2026-03-23T18:15:53.770843Z",
   "status": "updating",
   "status_msg": "",
   "template_id": "",
   "rule_id": "019d0c6c6a837b19bc524188c93b9db2",
   "executor_rule_id": "4c107c0d472d46fcacdb0bf21d237721",
   "state": "published",
-  "version": 5,
+  "version": 6,
   "notifications": [
     {
       "type": "email",
